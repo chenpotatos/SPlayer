@@ -9,21 +9,12 @@ import { convertToLocalTime } from "./time";
 import { useSettingStore } from "@/stores";
 import { marked } from "marked";
 import SvgIcon from "@/components/Global/SvgIcon.vue";
+import { isElectron } from "./env";
 
 type AnyObject = { [key: string]: any };
 
 // 必要数据
 let imageBlobURL: string = "";
-
-// 环境判断
-export const isDev = import.meta.env.MODE === "development" || import.meta.env.DEV;
-
-// 系统判断
-const userAgent = window.navigator.userAgent;
-export const isWin = userAgent.includes("Windows");
-export const isMac = userAgent.includes("Macintosh");
-export const isLinux = userAgent.includes("Linux");
-export const isElectron = userAgent.includes("Electron");
 
 /**
  * 打开链接
@@ -392,4 +383,39 @@ export const shuffleArray = <T>(arr: T[]): T[] => {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+};
+
+/**
+ * 在浏览器空闲时执行任务
+ * @param task 要执行的任务
+ */
+export const runIdle = (task: () => void) => {
+  try {
+    const ric = window?.requestIdleCallback as ((cb: () => void) => number) | undefined;
+    if (typeof ric === "function") {
+      ric(() => {
+        try {
+          task();
+        } catch {
+          /* empty */
+        }
+      });
+    } else {
+      setTimeout(() => {
+        try {
+          task();
+        } catch {
+          /* empty */
+        }
+      }, 0);
+    }
+  } catch {
+    setTimeout(() => {
+      try {
+        task();
+      } catch {
+        /* empty */
+      }
+    }, 0);
+  }
 };

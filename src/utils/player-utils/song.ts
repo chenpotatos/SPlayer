@@ -1,7 +1,7 @@
 import { songUrl, unlockSongUrl } from "@/api/song";
 import { useDataStore, useMusicStore, useSettingStore, useStatusStore } from "@/stores";
 import type { SongType } from "@/types/main";
-import { isElectron } from "../helper";
+import { isElectron } from "../env";
 import { getCoverColorData } from "../color";
 
 /**
@@ -86,8 +86,8 @@ export const getUnlockSongUrl = async (songData: SongType): Promise<string | nul
     if (!songId || !keyWord) return null;
     // 尝试解锁
     const results = await Promise.allSettled([
+      unlockSongUrl(songId, keyWord, "bodian"),
       unlockSongUrl(songId, keyWord, "netease"),
-      unlockSongUrl(songId, keyWord, "kuwo"),
     ]);
     // 解析结果
     const [neteaseRes, kuwoRes] = results;

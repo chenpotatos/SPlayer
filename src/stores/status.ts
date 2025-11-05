@@ -52,6 +52,8 @@ interface StatusState {
   playIndex: number;
   /** 歌词播放索引 */
   lyricIndex: number;
+  /** 歌词加载状态 */
+  lyricLoading: boolean;
   /** 当前播放时间 */
   currentTime: number;
   /** 歌曲总时长 */
@@ -100,7 +102,7 @@ export const useStatusStore = defineStore("status", {
     searchInputValue: "",
     showPlayBar: true,
     playStatus: false,
-    playLoading: false,
+    playLoading: true,
     playUblock: false,
     playListShow: false,
     showFullPlayer: false,
@@ -116,6 +118,7 @@ export const useStatusStore = defineStore("status", {
     spectrumsData: [],
     playIndex: -1,
     lyricIndex: -1,
+    lyricLoading: false,
     playRate: 1,
     playVolume: 0.7,
     playVolumeMute: 0,

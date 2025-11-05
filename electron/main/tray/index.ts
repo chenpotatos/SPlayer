@@ -7,9 +7,10 @@ import {
   nativeImage,
   nativeTheme,
 } from "electron";
-import { isWin, appName } from "./utils";
+import { isWin, appName } from "../utils/config";
 import { join } from "path";
-import log from "./logger";
+import { trayLog } from "../logger";
+import lyricWindow from "../windows/lyric-window";
 
 // 播放模式
 type PlayMode = "repeat" | "repeat-once" | "shuffle";
@@ -34,6 +35,9 @@ export interface MainTray {
   destroyTray(): void;
 }
 
+// 托盘单例
+let mainTrayInstance: MainTray | null = null;
+
 // 托盘图标
 const trayIcon = (filename: string) => {
   // const rootPath = isDev
@@ -46,7 +50,7 @@ const trayIcon = (filename: string) => {
 // 托盘菜单
 const createTrayMenu = (
   win: BrowserWindow,
-  lyricWin: BrowserWindow,
+  lyricWin: BrowserWindow | null,
 ): MenuItemConstructorOptions[] => {
   // 区分明暗图标
   const showIcon = (iconName: string) => {
@@ -142,8 +146,12 @@ const createTrayMenu = (
       id: "toogleDesktopLyricLock",
       label: `${desktopLyricLock ? "解锁" : "锁定"}桌面歌词`,
       icon: showIcon(desktopLyricLock ? "lock" : "unlock"),
-      visible: desktopLyricShow,
-      click: () => lyricWin.webContents.send("toogleDesktopLyricLock", !desktopLyricLock),
+      visible: desktopLyricShow && lyricWin !== null,
+      click: () => {
+        if (lyricWin) {
+          lyricWin.webContents.send("toogleDesktopLyricLock", !desktopLyricLock);
+        }
+      },
     },
     {
       type: "separator",
@@ -179,14 +187,14 @@ const createTrayMenu = (
 class CreateTray implements MainTray {
   // 窗口
   private _win: BrowserWindow;
-  private _lyricWin: BrowserWindow;
+  private _lyricWin: BrowserWindow | null;
   // 托盘
   private _tray: Tray;
   // 菜单
   private _menu: MenuItemConstructorOptions[];
   private _contextMenu: Menu;
 
-  constructor(win: BrowserWindow, lyricWin: BrowserWindow) {
+  constructor(win: BrowserWindow) {
     // 托盘图标
     const icon = trayIcon(isWin ? "tray.ico" : "tray@32.png").resize({
       height: 32,
@@ -194,7 +202,7 @@ class CreateTray implements MainTray {
     });
     // 初始化数据
     this._win = win;
-    this._lyricWin = lyricWin;
+    this._lyricWin = lyricWindow.getWin();
     this._tray = new Tray(icon);
     this._menu = createTrayMenu(this._win, this._lyricWin);
     this._contextMenu = Menu.buildFromTemplate(this._menu);
@@ -219,11 +227,19 @@ class CreateTray implements MainTray {
     });
   }
   // 设置标题
+  /**
+   * 设置标题
+   * @param title 标题
+   */
   setTitle(title: string) {
+    this._win.setTitle(title);
     this._tray.setTitle(title);
     this._tray.setToolTip(title);
   }
-  // 设置播放名称
+  /**
+   * 设置播放名称
+   * @param name 播放名称
+   */
   setPlayName(name: string) {
     // 超长处理
     if (name.length > 20) name = name.slice(0, 20) + "...";
@@ -231,48 +247,80 @@ class CreateTray implements MainTray {
     // 更新菜单
     this.initTrayMenu();
   }
-  // 设置播放状态
+  /**
+   * 设置播放状态
+   * @param state 播放状态
+   */
   setPlayState(state: PlayState) {
     playState = state;
     // 更新菜单
     this.initTrayMenu();
   }
-  // 设置播放模式
+  /**
+   * 设置播放模式
+   * @param mode 播放模式
+   */
   setPlayMode(mode: PlayMode) {
     playMode = mode;
     // 更新菜单
     this.initTrayMenu();
   }
-  // 设置喜欢状态
+  /**
+   * 设置喜欢状态
+   * @param like 喜欢状态
+   */
   setLikeState(like: boolean) {
     likeSong = like;
     // 更新菜单
     this.initTrayMenu();
   }
-  // 桌面歌词开关
+  /**
+   * 桌面歌词开关
+   * @param show 桌面歌词开关状态
+   */
   setDesktopLyricShow(show: boolean) {
     desktopLyricShow = show;
     // 更新菜单
     this.initTrayMenu();
   }
-  // 锁定桌面歌词
+  /**
+   * 锁定桌面歌词
+   * @param lock 锁定桌面歌词状态
+   */
   setDesktopLyricLock(lock: boolean) {
     desktopLyricLock = lock;
     // 更新菜单
     this.initTrayMenu();
   }
-  // 销毁托盘
+  /**
+   * 销毁托盘
+   */
   destroyTray() {
     this._tray.destroy();
   }
 }
 
-export const initTray = (win: BrowserWindow, lyricWin: BrowserWindow) => {
+/**
+ * 初始化托盘
+ * @param win 主窗口
+ * @param lyricWin 歌词窗口
+ * @returns 托盘实例
+ */
+export const initTray = (win: BrowserWindow) => {
   try {
-    log.info("🚀 Tray Process Startup");
-    return new CreateTray(win, lyricWin);
+    trayLog.info("🚀 Tray Process Startup");
+    const tray = new CreateTray(win);
+    // 保存单例实例
+    mainTrayInstance = tray;
+    return tray;
   } catch (error) {
-    log.error("❌ Tray Process Error", error);
+    trayLog.error("❌ Tray Process Error", error);
     return null;
   }
 };
+
+/**
+ * 获取托盘实例
+ * @returns 托盘实例
+ */
+export const getMainTray = (): MainTray | null => mainTrayInstance;

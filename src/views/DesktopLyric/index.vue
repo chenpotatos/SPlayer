@@ -1,0 +1,345 @@
+<template>
+  <n-config-provider :theme="null">
+    <div
+      ref="desktopLyricsRef"
+      :class="[
+        'desktop-lyric',
+        {
+          locked: lyricConfig.isLock,
+        },
+      ]"
+    >
+      <div class="header" align="center" justify="space-between">
+        <n-flex :wrap="false" align="center" justify="flex-start" size="small" @pointerdown.stop>
+          <div class="menu-btn" title="返回应用" @click.stop="sendToMain('win-show')">
+            <SvgIcon name="Music" />
+          </div>
+          <div class="menu-btn" title="增加字体大小">
+            <SvgIcon :offset="-1" name="TextSizeAdd" />
+          </div>
+          <div class="menu-btn" title="减少字体大小">
+            <SvgIcon :offset="-1" name="TextSizeReduce" />
+          </div>
+          <span class="song-name">{{ lyricData.playName }}</span>
+        </n-flex>
+        <n-flex :wrap="false" align="center" justify="center" size="small" @pointerdown.stop>
+          <div class="menu-btn" title="上一曲" @click.stop="sendToMain('playPrev')">
+            <SvgIcon name="SkipPrev" />
+          </div>
+          <div
+            class="menu-btn"
+            :title="lyricData.playStatus ? '暂停' : '播放'"
+            @click.stop="sendToMain('playOrPause')"
+          >
+            <SvgIcon :name="lyricData.playStatus ? 'Pause' : 'Play'" />
+          </div>
+          <div class="menu-btn" title="下一曲" @click.stop="sendToMain('playNext')">
+            <SvgIcon name="SkipNext" />
+          </div>
+        </n-flex>
+        <n-flex :wrap="false" align="center" justify="flex-end" size="small" @pointerdown.stop>
+          <div class="menu-btn" title="锁定">
+            <SvgIcon name="Lock" />
+          </div>
+          <div class="menu-btn" title="解锁">
+            <SvgIcon name="LockOpen" />
+          </div>
+          <div class="menu-btn" title="关闭">
+            <SvgIcon name="Close" />
+          </div>
+        </n-flex>
+      </div>
+      <n-flex
+        :style="{
+          fontSize: lyricConfig.fontSize + 'px',
+          fontFamily: lyricConfig.fontFamily,
+        }"
+        :class="['lyric-container', lyricConfig.position]"
+        vertical
+      >
+        <span
+          v-for="line in renderLyricLines"
+          :key="line.key"
+          :class="['lyric-line', { active: line.active }]"
+          :style="{
+            color: line.active ? lyricConfig.playedColor : lyricConfig.unplayedColor,
+          }"
+        >
+          {{ line.text }}
+        </span>
+      </n-flex>
+    </div>
+  </n-config-provider>
+</template>
+
+<script setup lang="ts">
+import { Position } from "@vueuse/core";
+import { LyricConfig, LyricData, RenderLine } from "@/types/desktop-lyric";
+
+// 桌面歌词数据
+const lyricData = reactive<LyricData>({
+  playName: "未知歌曲",
+  playStatus: false,
+  progress: 0,
+  lrcData: [],
+  yrcData: [],
+  lyricIndex: -1,
+});
+
+// 桌面歌词配置
+const lyricConfig = reactive<LyricConfig>({
+  isLock: false,
+  playedColor: "#fe7971",
+  unplayedColor: "#ccc",
+  stroke: "#000",
+  strokeWidth: 2,
+  fontFamily: "system-ui",
+  fontSize: 24,
+  isDoubleLine: true,
+  position: "both",
+  limitBounds: false,
+});
+
+// 桌面歌词元素
+const desktopLyricsRef = useTemplateRef<HTMLElement>("desktopLyricsRef");
+
+/**
+ * 渲染的歌词行
+ * @returns 渲染的歌词行数组
+ */
+const renderLyricLines = computed<RenderLine[]>(() => {
+  const lyrics = lyricData?.yrcData?.length ? lyricData.yrcData : lyricData.lrcData;
+  if (!lyrics?.length) {
+    return [{ text: "纯音乐，请欣赏", key: "placeholder", active: true }];
+  }
+  let idx = lyricData?.lyricIndex ?? -1;
+  // 显示歌名
+  if (idx < 0) {
+    return [{ text: lyricData.playName ?? "未知歌曲", key: "placeholder", active: true }];
+  }
+  const current = lyrics[idx];
+  const next = lyrics[idx + 1];
+  if (!current) return [];
+  // 有翻译
+  if (current.tran && current.tran.trim().length > 0) {
+    const lines: RenderLine[] = [
+      { text: current.content, key: `${idx}:orig`, active: true },
+      { text: current.tran, key: `${idx}:tran`, active: false },
+    ];
+    return lines.filter((l) => l.text && l.text.trim().length > 0);
+  }
+  // 单行：仅当前句原文，高亮
+  if (!lyricConfig.isDoubleLine) {
+    return [{ text: current.content, key: `${idx}:orig`, active: true }].filter(
+      (l) => l.text && l.text.trim().length > 0,
+    );
+  }
+  // 双行交替：只高亮当前句所在行
+  const isEven = idx % 2 === 0;
+  if (isEven) {
+    const lines: RenderLine[] = [
+      { text: current.content, key: `${idx}:orig`, active: true },
+      { text: next?.content ?? "", key: `${idx + 1}:next`, active: false },
+    ];
+    return lines.filter((l) => l.text && l.text.trim().length > 0);
+  }
+  const lines: RenderLine[] = [
+    { text: next?.content ?? "", key: `${idx + 1}:next`, active: false },
+    { text: current.content, key: `${idx}:orig`, active: true },
+  ];
+  return lines.filter((l) => l.text && l.text.trim().length > 0);
+});
+
+// 拖拽窗口状态
+const dragState = reactive({
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  startWinX: 0,
+  startWinY: 0,
+  winWidth: 0,
+  winHeight: 0,
+});
+
+/**
+ * 桌面歌词拖动开始
+ * @param _position 拖动位置
+ * @param event 指针事件
+ */
+const lyricDragStart = async (_position: Position, event: PointerEvent) => {
+  if (lyricConfig.isLock) return;
+  dragState.isDragging = true;
+  const { x, y, width, height } = await window.electron.ipcRenderer.invoke("get-window-bounds");
+  dragState.startX = (event?.screenX ?? 0) as number;
+  dragState.startY = (event?.screenY ?? 0) as number;
+  dragState.startWinX = x as number;
+  dragState.startWinY = y as number;
+  dragState.winWidth = width as number;
+  dragState.winHeight = height as number;
+};
+
+/**
+ * 桌面歌词拖动移动
+ * @param _position 拖动位置
+ * @param event 指针事件
+ */
+const lyricDragMove = async (_position: Position, event: PointerEvent) => {
+  if (!dragState.isDragging || lyricConfig.isLock) return;
+  const screenX = (event?.screenX ?? 0) as number;
+  const screenY = (event?.screenY ?? 0) as number;
+  let newWinX = dragState.startWinX + (screenX - dragState.startX);
+  let newWinY = dragState.startWinY + (screenY - dragState.startY);
+  // 可选：限制在屏幕边界（支持多屏）
+  if (lyricConfig.limitBounds) {
+    const { minX, minY, maxX, maxY } = await window.electron.ipcRenderer.invoke(
+      "get-virtual-screen-bounds",
+    );
+    newWinX = Math.max(minX as number, Math.min((maxX as number) - dragState.winWidth, newWinX));
+    newWinY = Math.max(minY as number, Math.min((maxY as number) - dragState.winHeight, newWinY));
+  }
+  window.electron.ipcRenderer.send(
+    "move-window",
+    newWinX,
+    newWinY,
+    dragState.winWidth,
+    dragState.winHeight,
+  );
+};
+
+// 监听桌面歌词拖动
+useDraggable(desktopLyricsRef, {
+  onStart: (position, event) => {
+    lyricDragStart(position, event);
+  },
+  onMove: (position, event) => {
+    lyricDragMove(position, event);
+  },
+  onEnd: () => {
+    dragState.isDragging = false;
+  },
+});
+
+// 发送至主窗口
+const sendToMain = (eventName: string, ...args: any[]) => {
+  // 特殊处理
+  if (eventName === "win-show") {
+    window.electron.ipcRenderer.send("win-show");
+    return;
+  }
+  window.electron.ipcRenderer.send("send-to-main", eventName, ...args);
+};
+
+// 处理歌词数据
+const handleLyricData = (data: LyricData) => {
+  Object.assign(lyricData, data);
+};
+
+onMounted(() => {
+  // 接收歌词数据
+  window.electron.ipcRenderer.on("update-desktop-lyric-data", (_event, data: LyricData) => {
+    handleLyricData(data);
+  });
+  // 请求歌词数据及配置
+  window.electron.ipcRenderer.send("request-desktop-lyric-data");
+});
+</script>
+
+<style scoped lang="scss">
+.n-config-provider {
+  width: 100%;
+  height: 100%;
+}
+.desktop-lyric {
+  color: #fff;
+  background-color: transparent;
+  padding: 12px;
+  border-radius: 12px;
+  height: 100%;
+  overflow: hidden;
+  transition: background-color 0.3s;
+  cursor: move;
+  .header {
+    opacity: 0;
+    margin-bottom: 12px;
+    transition: opacity 0.3s;
+    // 子内容三等分grid
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-gap: 12px;
+    > * {
+      min-width: 0;
+    }
+    .song-name {
+      font-size: 1em;
+      text-align: left;
+      flex: 1 1 auto;
+      line-height: 36px;
+      padding: 0 8px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .menu-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      padding: 6px;
+      border-radius: 8px;
+      will-change: transform;
+      transition:
+        background-color 0.3s,
+        transform 0.3s;
+      cursor: pointer;
+      .n-icon {
+        font-size: 24px;
+      }
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.3);
+      }
+      &:active {
+        transform: scale(0.98);
+      }
+    }
+  }
+  .lyric-container {
+    padding: 0 8px;
+    &.center {
+      align-items: center;
+    }
+    &.right {
+      align-items: flex-end;
+    }
+    &.both {
+      .lyric-line {
+        &:nth-child(2n) {
+          margin-left: auto;
+        }
+      }
+    }
+  }
+  &:hover {
+    &:not(.locked) {
+      background-color: rgba(0, 0, 0, 0.3);
+      .header {
+        opacity: 1;
+      }
+    }
+  }
+  &.locked {
+    pointer-events: none;
+    cursor: default;
+    .header {
+      opacity: 0;
+    }
+  }
+}
+</style>
+
+<!-- <style>
+body {
+  background-color: transparent !important;
+  /* background-image: url("https://picsum.photos/1920/1080"); */
+}
+</style> -->

@@ -1,8 +1,8 @@
+import { storeLog } from "../logger";
+import type { LyricConfig } from "../../../src/types/desktop-lyric";
 import Store from "electron-store";
-import { screen } from "electron";
-import log from "./logger";
 
-log.info("🌱 Store init");
+storeLog.info("🌱 Store init");
 
 export interface StoreType {
   window: {
@@ -21,12 +21,17 @@ export interface StoreType {
     y?: number;
     width?: number;
     height?: number;
+    // 配置
+    config?: LyricConfig;
   };
   proxy: string;
 }
 
-// 初始化仓库
-export const initStore = () => {
+/**
+ * 使用 Store
+ * @returns Store<StoreType>
+ */
+export const useStore = () => {
   return new Store<StoreType>({
     defaults: {
       window: {
@@ -37,10 +42,22 @@ export const initStore = () => {
         fontSize: 30,
         mainColor: "#fff",
         shadowColor: "rgba(0, 0, 0, 0.5)",
-        x: screen.getPrimaryDisplay().workAreaSize.width / 2 - 400,
-        y: screen.getPrimaryDisplay().workAreaSize.height - 90,
+        x: 0,
+        y: 0,
         width: 800,
         height: 180,
+        config: {
+          isLock: false,
+          playedColor: "#fe7971",
+          unplayedColor: "#ccc",
+          stroke: "#000",
+          strokeWidth: 2,
+          fontFamily: "system-ui",
+          fontSize: 24,
+          isDoubleLine: true,
+          position: "both",
+          limitBounds: false,
+        },
       },
       proxy: "",
     },

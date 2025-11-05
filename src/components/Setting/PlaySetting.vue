@@ -128,13 +128,7 @@
             },
             {
               label: '封面主色',
-              disabled: true,
               value: 'color',
-            },
-            {
-              label: '无背景',
-              disabled: true,
-              value: 'none',
             },
           ]"
           class="set"
@@ -223,7 +217,8 @@
 import type { SelectOption } from "naive-ui";
 import { useSettingStore } from "@/stores";
 import { isLogin } from "@/utils/auth";
-import { isElectron, renderOption } from "@/utils/helper";
+import { renderOption } from "@/utils/helper";
+import { isElectron } from "@/utils/env";
 import { uniqBy } from "lodash";
 import player from "@/utils/player";
 

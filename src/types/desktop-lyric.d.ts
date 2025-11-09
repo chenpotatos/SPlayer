@@ -6,8 +6,12 @@ export interface LyricData {
   playName?: string;
   /** 播放状态 */
   playStatus?: boolean;
-  /** 播放进度 */
-  progress?: number;
+  /** 当前播放进度 */
+  currentTime?: number;
+  /** 当前播放歌曲 id（用于偏移校准） */
+  songId?: number;
+  /** 当前歌曲的时间偏移（秒，正负均可） */
+  songOffset?: number;
   /** 歌词数据 */
   lrcData?: LyricType[];
   yrcData?: LyricType[];
@@ -23,16 +27,20 @@ export interface LyricConfig {
   playedColor: string;
   /** 未播放颜色 */
   unplayedColor: string;
-  /** 描边 */
-  stroke: string;
-  /** 描边宽度 */
-  strokeWidth: number;
+  /** 阴影颜色 */
+  shadowColor: string;
   /** 字体 */
   fontFamily: string;
   /** 字体大小 */
   fontSize: number;
+  /** 字体是否加粗 */
+  fontIsBold: boolean;
   /** 是否双行 */
   isDoubleLine: boolean;
+  /** 显示翻译 */
+  showTran: boolean;
+  /** 是否开启逐字歌词 */
+  showYrc: boolean;
   /** 文本排版位置 */
   position: "left" | "center" | "right" | "both";
   /** 是否限制在屏幕边界内拖动 */
@@ -42,9 +50,11 @@ export interface LyricConfig {
 /**
  * 渲染的歌词行
  */
-interface RenderLine {
-  /** 歌词文本 */
-  text: string;
+export interface RenderLine {
+  /** 当前整行歌词数据（用于逐字渲染） */
+  line: LyricType;
+  /** 当前行在歌词数组中的索引 */
+  index: number;
   /** 唯一键 */
   key: string;
   /** 是否高亮 */

@@ -83,6 +83,11 @@ const initWindowsIpc = (): void => {
     app.relaunch();
   });
 
+  // 向主窗口发送事件
+  ipcMain.on("send-to-mainWin", (_, eventName, ...args) => {
+    mainWin?.webContents.send(eventName, ...args);
+  });
+
   // 显示进度
   ipcMain.on("set-bar", (_event, val: number | "none" | "indeterminate" | "error" | "paused") => {
     switch (val) {
@@ -118,6 +123,13 @@ const initWindowsIpc = (): void => {
 
   // 开启登录窗口
   ipcMain.on("open-login-web", () => loginWindow.create(mainWin!));
+
+  // 开启设置
+  ipcMain.on("open-setting", (_, type) => {
+    mainWin?.show();
+    mainWin?.focus();
+    mainWin?.webContents.send("openSetting", type);
+  });
 };
 
 export default initWindowsIpc;

@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 import { createWindow } from "./index";
 import { useStore } from "../store";
 import { lyricWinUrl } from "../utils/config";
+import mainWindow from "./main-window";
 
 class LyricWindow {
   private win: BrowserWindow | null = null;
@@ -25,6 +26,12 @@ class LyricWindow {
         store.set("lyric", { ...store.get("lyric"), width, height });
       }
     });
+    // 歌词窗口关闭
+    this.win?.on("close", () => {
+      const mainWin = mainWindow?.getWin();
+      if (!mainWin || mainWin.isDestroyed() || mainWin.webContents.isDestroyed()) return;
+      mainWin?.webContents.send("closeDesktopLyric");
+    });
   }
   /**
    * 创建主窗口
@@ -36,29 +43,29 @@ class LyricWindow {
     this.win = createWindow({
       width: width || 800,
       height: height || 180,
-      minWidth: 440,
-      minHeight: 120,
-      center: !(x && y), // 没有指定位置时居中显示
-      // maxWidth: 1600,
-      // maxHeight: 300,
+      minWidth: 640,
+      minHeight: 140,
+      maxWidth: 1400,
+      maxHeight: 360,
+      // 没有指定位置时居中显示
+      center: !(x && y),
       // 窗口位置
       x,
       y,
-      // transparent: true,
-      // backgroundColor: "rgba(0, 0, 0, 0)",
+      transparent: true,
+      backgroundColor: "rgba(0, 0, 0, 0)",
       alwaysOnTop: true,
       resizable: true,
       movable: true,
       show: false,
       // 不在任务栏显示
-      // skipTaskbar: true,
-      // // 窗口不能最小化
-      // minimizable: false,
-      // // 窗口不能最大化
-      // maximizable: false,
-      // // 窗口不能进入全屏状态
-      // fullscreenable: false,
-      frame: true,
+      skipTaskbar: true,
+      // 窗口不能最小化
+      minimizable: false,
+      // 窗口不能最大化
+      maximizable: false,
+      // 窗口不能进入全屏状态
+      fullscreenable: false,
     });
     if (!this.win) return null;
     // 加载地址

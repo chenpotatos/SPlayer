@@ -50,11 +50,6 @@ const initLyricIpc = (): void => {
     }
   });
 
-  // 向主窗口发送事件
-  ipcMain.on("send-to-main", (_, eventName, ...args) => {
-    mainWin?.webContents.send(eventName, ...args);
-  });
-
   // 更新歌词窗口数据
   ipcMain.on("update-desktop-lyric-data", (_, lyricData) => {
     if (!lyricData || !isWinAlive(lyricWin)) return;
@@ -62,9 +57,19 @@ const initLyricIpc = (): void => {
   });
 
   // 更新歌词窗口配置
-  ipcMain.on("update-desktop-lyric-option", (_, option) => {
+  ipcMain.on("update-desktop-lyric-option", (_, option, callback: boolean = false) => {
     if (!option || !isWinAlive(lyricWin)) return;
-    lyricWin.webContents.send("desktop-lyric-option-change", option);
+    // 增量更新
+    const prevOption = store.get("lyric.config");
+    if (prevOption) {
+      option = { ...prevOption, ...option };
+    }
+    store.set("lyric.config", option);
+    // 触发窗口更新
+    if (callback && isWinAlive(lyricWin)) {
+      lyricWin.webContents.send("update-desktop-lyric-option", option);
+    }
+    mainWin?.webContents.send("update-desktop-lyric-option", option);
   });
 
   // 播放状态更改
@@ -116,39 +121,52 @@ const initLyricIpc = (): void => {
     store.set("lyric", { ...store.get("lyric"), x, y, width, height });
   });
 
+  // 更新歌词窗口宽高
+  ipcMain.on("update-lyric-size", (_, width, height) => {
+    if (!isWinAlive(lyricWin)) return;
+    // 更新窗口宽度
+    lyricWin.setBounds({ width, height });
+    store.set("lyric", { ...store.get("lyric"), width, height });
+  });
+
   // 更新高度
   ipcMain.on("update-window-height", (_, height) => {
     if (!isWinAlive(lyricWin)) return;
+    const store = useStore();
     const { width } = lyricWin.getBounds();
     // 更新窗口高度
     lyricWin.setBounds({ width, height });
+    store.set("lyric", { ...store.get("lyric"), height });
   });
 
-  // 请求歌词数据及配置
+  // 是否固定当前最大宽高
+  ipcMain.on(
+    "toggle-fixed-max-size",
+    (_, options: { width: number; height: number; fixed: boolean }) => {
+      if (!isWinAlive(lyricWin)) return;
+      const { width, height, fixed } = options;
+      if (fixed) {
+        lyricWin.setMaximumSize(width, height);
+      } else {
+        lyricWin.setMaximumSize(1400, 360);
+      }
+    },
+  );
+
+  // 请求歌词数据
   ipcMain.on("request-desktop-lyric-data", () => {
     if (!isWinAlive(lyricWin)) return;
     // 触发窗口更新
     mainWin?.webContents.send("request-desktop-lyric-data");
   });
 
-  // 获取配置
-  ipcMain.handle("get-desktop-lyric-option", () => {
-    return store.get("lyric");
-  });
-
-  // 保存配置
-  ipcMain.on("set-desktop-lyric-option", (_, option, callback: boolean = false) => {
-    store.set("lyric", option);
-    // 触发窗口更新
-    if (callback && isWinAlive(lyricWin)) {
-      lyricWin.webContents.send("desktop-lyric-option-change", option);
+  // 请求歌词配置
+  ipcMain.handle("request-desktop-lyric-option", () => {
+    const config = store.get("lyric.config");
+    if (isWinAlive(lyricWin)) {
+      lyricWin.webContents.send("update-desktop-lyric-option", config);
     }
-    mainWin?.webContents.send("desktop-lyric-option-change", option);
-  });
-
-  // 发送主程序事件
-  ipcMain.on("send-main-event", (_, name, val) => {
-    mainWin?.webContents.send(name, val);
+    return config;
   });
 
   // 关闭桌面歌词
@@ -159,7 +177,7 @@ const initLyricIpc = (): void => {
   });
 
   // 锁定/解锁桌面歌词
-  ipcMain.on("toogleDesktopLyricLock", (_, isLock: boolean) => {
+  ipcMain.on("toogleDesktopLyricLock", (_, isLock: boolean, isTemp: boolean = false) => {
     if (!isWinAlive(lyricWin)) return;
     // 是否穿透
     if (isLock) {
@@ -167,6 +185,11 @@ const initLyricIpc = (): void => {
     } else {
       lyricWin.setIgnoreMouseEvents(false);
     }
+    if (isTemp) return;
+    store.set("lyric.config", { ...store.get("lyric.config"), isLock });
+    // 触发窗口更新
+    const config = store.get("lyric.config");
+    mainWin?.webContents.send("update-desktop-lyric-option", config);
   });
 };
 

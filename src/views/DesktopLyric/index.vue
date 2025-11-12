@@ -1,6 +1,9 @@
 <template>
   <n-config-provider :theme="null">
-    <div ref="desktopLyricRef" :class="['desktop-lyric', { locked: lyricConfig.isLock }]">
+    <div
+      ref="desktopLyricRef"
+      :class="['desktop-lyric', { locked: lyricConfig.isLock, hovered: isHovered }]"
+    >
       <div class="header" align="center" justify="space-between">
         <n-flex :wrap="false" align="center" justify="flex-start" size="small" @pointerdown.stop>
           <div class="menu-btn" title="返回应用" @click.stop="sendToMain('win-show')">
@@ -158,6 +161,28 @@ const lyricConfig = reactive<LyricConfig>({
 
 // 桌面歌词元素
 const desktopLyricRef = ref<HTMLElement>();
+
+// hover 状态控制
+const isHovered = ref<boolean>(false);
+let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * 处理鼠标移动，更新 hover 状态
+ */
+const handleMouseMove = () => {
+  // 设置 hover 状态（锁定和非锁定状态都响应）
+  isHovered.value = true;
+  // 清除之前的定时器
+  if (hoverTimer) {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+  }
+  // 设置新的定时器，延迟后移除 hover 状态
+  hoverTimer = setTimeout(() => {
+    isHovered.value = false;
+    hoverTimer = null;
+  }, 1000);
+};
 
 /**
  * 计算安全的结束时间
@@ -332,9 +357,9 @@ const dragState = reactive({
 
 /**
  * 桌面歌词拖动开始
- * @param event 指针事件
+ * @param event 鼠标事件
  */
-const onDocPointerDown = async (event: PointerEvent) => {
+const onDocMouseDown = async (event: MouseEvent) => {
   if (lyricConfig.isLock) return;
   // 仅左键触发
   if (event.button !== 0) return;
@@ -347,29 +372,35 @@ const onDocPointerDown = async (event: PointerEvent) => {
 
 /**
  * 桌面歌词拖动开始
- * @param event 指针事件
+ * @param event 鼠标事件
  */
-const startDrag = async (event: PointerEvent) => {
+const startDrag = async (event: MouseEvent) => {
   dragState.isDragging = true;
   const { x, y } = await window.electron.ipcRenderer.invoke("get-window-bounds");
   const { width, height } = await window.api.store.get("lyric");
-  window.electron.ipcRenderer.send("toggle-fixed-max-size", { width, height, fixed: true });
+  const safeWidth = Number(width) > 0 ? Number(width) : 800;
+  const safeHeight = Number(height) > 0 ? Number(height) : 136;
+  window.electron.ipcRenderer.send("toggle-fixed-max-size", {
+    width: safeWidth,
+    height: safeHeight,
+    fixed: true,
+  });
   dragState.startX = event?.screenX ?? 0;
   dragState.startY = event?.screenY ?? 0;
   dragState.startWinX = x;
   dragState.startWinY = y;
-  dragState.winWidth = width ?? 0;
-  dragState.winHeight = height ?? 0;
-  document.addEventListener("pointermove", onDocPointerMove, { capture: true });
-  document.addEventListener("pointerup", onDocPointerUp, { capture: true });
+  dragState.winWidth = safeWidth;
+  dragState.winHeight = safeHeight;
+  document.addEventListener("mousemove", onDocMouseMove);
+  document.addEventListener("mouseup", onDocMouseUp);
   event.preventDefault();
 };
 
 /**
  * 桌面歌词拖动移动
- * @param event 指针事件
+ * @param event 鼠标事件
  */
-const onDocPointerMove = async (event: PointerEvent) => {
+const onDocMouseMove = async (event: MouseEvent) => {
   if (!dragState.isDragging || lyricConfig.isLock) return;
   const screenX = event?.screenX ?? 0;
   const screenY = event?.screenY ?? 0;
@@ -395,13 +426,13 @@ const onDocPointerMove = async (event: PointerEvent) => {
 /**
  * 桌面歌词拖动结束
  */
-const onDocPointerUp = () => {
+const onDocMouseUp = () => {
   if (!dragState.isDragging) return;
   // 关闭拖拽状态
   dragState.isDragging = false;
   // 移除全局监听
-  document.removeEventListener("pointermove", onDocPointerMove, { capture: true });
-  document.removeEventListener("pointerup", onDocPointerUp, { capture: true });
+  document.removeEventListener("mousemove", onDocMouseMove);
+  document.removeEventListener("mouseup", onDocMouseUp);
   requestAnimationFrame(() => {
     // 恢复拖拽前宽高
     window.electron.ipcRenderer.send("update-lyric-size", dragState.winWidth, dragState.winHeight);
@@ -552,15 +583,23 @@ onMounted(() => {
     pauseSeek();
   }
   // 拖拽入口
-  document.addEventListener("pointerdown", onDocPointerDown, { capture: true });
+  document.addEventListener("mousedown", onDocMouseDown);
+  // 监听鼠标移动，控制 hover 状态
+  document.addEventListener("mousemove", handleMouseMove);
 });
 
 onBeforeUnmount(() => {
   // 关闭 RAF
   pauseSeek();
   // 解绑事件
-  document.removeEventListener("pointerdown", onDocPointerDown, { capture: true });
-  if (dragState.isDragging) onDocPointerUp();
+  document.removeEventListener("mousedown", onDocMouseDown);
+  document.removeEventListener("mousemove", handleMouseMove);
+  // 清理定时器
+  if (hoverTimer) {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+  }
+  if (dragState.isDragging) onDocMouseUp();
 });
 </script>
 
@@ -620,6 +659,9 @@ onBeforeUnmount(() => {
       }
       &.lock-btn {
         pointer-events: auto;
+        .n-icon {
+          filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.8));
+        }
       }
       &:hover {
         background-color: rgba(255, 255, 255, 0.3);
@@ -746,7 +788,7 @@ onBeforeUnmount(() => {
       }
     }
   }
-  &:hover {
+  &.hovered {
     &:not(.locked) {
       background-color: rgba(0, 0, 0, 0.6);
       .song-name,
@@ -762,7 +804,7 @@ onBeforeUnmount(() => {
     .lyric-container {
       pointer-events: none;
     }
-    &:hover {
+    &.hovered {
       .lock-btn {
         opacity: 1;
         pointer-events: auto;

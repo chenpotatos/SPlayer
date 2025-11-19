@@ -30,21 +30,14 @@
         :class="[
           'player-content',
           {
+            'no-lrc': noLrc,
             pure: statusStore.pureLyricMode && musicStore.isHasLrc,
-            'no-lrc': !musicStore.isHasLrc,
           },
         ]"
         @mousemove="playerMove"
       >
         <Transition name="zoom">
-          <div
-            v-if="
-              !(statusStore.pureLyricMode && musicStore.isHasLrc) ||
-              musicStore.playSong.type === 'radio'
-            "
-            :key="musicStore.playSong.id"
-            class="content-left"
-          >
+          <div v-if="!pureLyricMode" :key="musicStore.playSong.id" class="content-left">
             <!-- 封面 -->
             <PlayerCover />
             <!-- 数据 -->
@@ -58,6 +51,7 @@
             v-if="statusStore.pureLyricMode && musicStore.isHasLrc"
             :center="statusStore.pureLyricMode"
             :theme="statusStore.mainColor"
+            :light="pureLyricMode"
           />
           <!-- 歌词 -->
           <MainAMLyric v-if="settingStore.useAMLyrics" />
@@ -96,6 +90,20 @@ const isShowComment = computed<boolean>(
   () => !musicStore.playSong.path && statusStore.showPlayerComment,
 );
 
+/** 没有歌词 */
+const noLrc = computed<boolean>(() => {
+  const noNormalLrc = !musicStore.isHasLrc;
+  const noYrcAvailable = !musicStore.isHasYrc || !settingStore.showYrc;
+  // const notLoading = !statusStore.lyricLoading;
+
+  return noNormalLrc && noYrcAvailable;
+});
+
+/** 是否处于纯净模式 */
+const pureLyricMode = computed<boolean>(
+  () => (statusStore.pureLyricMode && musicStore.isHasLrc) || musicStore.playSong.type === "radio",
+);
+
 // 主内容 key
 const playerContentKey = computed(() => `${statusStore.pureLyricMode}`);
 
@@ -114,7 +122,8 @@ const instantLyrics = computed(() => {
   const content = isYrc
     ? musicStore.songLyric.yrcData[statusStore.lyricIndex]
     : musicStore.songLyric.lrcData[statusStore.lyricIndex];
-  return { content: content?.content, tran: settingStore.showTran && content?.tran };
+  const contentStr = content?.words?.map((v) => v.word).join("") || "";
+  return { content: contentStr, tran: settingStore.showTran && content?.translatedLyric };
 });
 
 // 隐藏播放元素

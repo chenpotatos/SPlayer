@@ -199,20 +199,52 @@ const initFileIpc = (): void => {
   // 读取本地歌词
   ipcMain.handle(
     "read-local-lyric",
-    async (_, lyricDir: string, id: number, ext: string): Promise<string> => {
-      const pattern = `**/{,*.}${id}.${ext}`;
+    async (_, lyricDirs: string[], id: number): Promise<{ lrc: string; ttml: string }> => {
+      const result = { lrc: "", ttml: "" };
+
       try {
-        const files = await FastGlob(pattern, { cwd: lyricDir });
-        if (files.length > 0) {
-          const firstMatch = join(lyricDir, files[0]);
-          await access(firstMatch);
-          const lyric = await readFile(firstMatch, "utf-8");
-          if (lyric) return lyric;
+        // 定义需要查找的模式
+        // 此处的 `{,*.}` 表示这里可以取 `` (empty) 也可以取 `*.`
+        // 将歌词文件命名为 `歌曲ID.后缀名` 或者 `任意前缀.歌曲ID.后缀名` 均可
+        const patterns = {
+          ttml: `**/{,*.}${id}.ttml`,
+          lrc: `**/{,*.}${id}.lrc`,
+        };
+
+        // 遍历每一个目录
+        for (const dir of lyricDirs) {
+          try {
+            // 查找 ttml
+            if (!result.ttml) {
+              const ttmlFiles = await FastGlob(patterns.ttml, { cwd: dir });
+              if (ttmlFiles.length > 0) {
+                const filePath = join(dir, ttmlFiles[0]);
+                await access(filePath);
+                result.ttml = await readFile(filePath, "utf-8");
+              }
+            }
+
+            // 查找 lrc
+            if (!result.lrc) {
+              const lrcFiles = await FastGlob(patterns.lrc, { cwd: dir });
+              if (lrcFiles.length > 0) {
+                const filePath = join(dir, lrcFiles[0]);
+                await access(filePath);
+                result.lrc = await readFile(filePath, "utf-8");
+              }
+            }
+
+            // 如果两种文件都找到了就提前结束搜索
+            if (result.ttml && result.lrc) break;
+          } catch {
+            // 某个路径异常，跳过
+          }
         }
       } catch {
-        /* empty */
+        /* 忽略错误 */
       }
-      return "";
+
+      return result;
     },
   );
 

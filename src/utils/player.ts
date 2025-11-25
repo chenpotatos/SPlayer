@@ -1,11 +1,11 @@
-import type { SongType, PlayModeType } from "@/types/main";
+import { SongType, PlayModeType } from "@/types/main";
 import type { MessageReactive } from "naive-ui";
 import { Howl, Howler } from "howler";
 import { cloneDeep } from "lodash-es";
 import { useMusicStore, useStatusStore, useDataStore, useSettingStore } from "@/stores";
 import { useIntervalFn } from "@vueuse/core";
 import { calculateProgress } from "./time";
-import { shuffleArray, runIdle } from "./helper";
+import { shuffleArray, runIdle, handleSongQuality } from "./helper";
 import { heartRateList } from "@/api/playlist";
 import { formatSongsList } from "./format";
 import { isLogin } from "./auth";
@@ -17,12 +17,15 @@ import {
   getPlayerInfo,
   getPlaySongData,
   getUnlockSongUrl,
+  getNextSongUrl,
+  NextPrefetchSong,
 } from "./player-utils/song";
 import { isDev, isElectron } from "./env";
 // import { getLyricData } from "./player-utils/lyric";
 import audioContextManager from "@/utils/player-utils/context";
 import lyricManager from "./lyricManager";
 import blob from "./blob";
+import { IFormat } from "music-metadata";
 
 /* *允许播放格式 */
 const allowPlayFormat = ["mp3", "flac", "webm", "ogg", "wav"];
@@ -70,7 +73,6 @@ class Player {
     250,
     { immediate: false },
   );
-
   /** 自动关闭定时器 */
   private autoCloseInterval: ReturnType<typeof setInterval> | undefined;
   /** 频谱数据 */
@@ -80,7 +82,7 @@ class Player {
   /** 其他数据 */
   private message: MessageReactive | null = null;
   /** 预载下一首歌曲播放地址缓存（仅存 URL，不创建 Howl） */
-  private nextPrefetch: { id: number; url: string | null; ublock: boolean } | null = null;
+  private nextPrefetch: NextPrefetchSong = null;
   /** 当前曲目重试信息（按歌曲维度计数） */
   private retryInfo: { songId: number; count: number } = { songId: 0, count: 0 };
   constructor() {
@@ -109,75 +111,6 @@ class Player {
     this.cleanupAllTimers();
   }
   /**
-   * 预载下一首歌曲的播放地址（优先官方，失败则并发尝试解灰）
-   * 仅缓存 URL，不实例化播放器
-   */
-  private async prefetchNextSongUrl() {
-    try {
-      const dataStore = useDataStore();
-      const statusStore = useStatusStore();
-      // const musicStore = useMusicStore();
-      const settingStore = useSettingStore();
-
-      // 无列表或私人FM模式直接跳过
-      const playList = dataStore.playList;
-      if (!playList?.length || statusStore.personalFmMode) {
-        this.nextPrefetch = null;
-        return;
-      }
-
-      // 计算下一首（循环到首）
-      let nextIndex = statusStore.playIndex + 1;
-      if (nextIndex >= playList.length) nextIndex = 0;
-      const nextSong = playList[nextIndex];
-      if (!nextSong) {
-        this.nextPrefetch = null;
-        return;
-      }
-
-      // 本地歌曲：直接缓存 file URL
-      if (nextSong.path) {
-        const songId = nextSong.type === "radio" ? nextSong.dj?.id : nextSong.id;
-        this.nextPrefetch = {
-          id: Number(songId || nextSong.id),
-          url: `file://${nextSong.path}`,
-          ublock: false,
-        };
-        return;
-      }
-
-      // 在线歌曲：优先官方，其次解灰
-      const songId = nextSong.type === "radio" ? nextSong.dj?.id : nextSong.id;
-      if (!songId) {
-        this.nextPrefetch = null;
-        return;
-      }
-      const canUnlock = isElectron && nextSong.type !== "radio" && settingStore.useSongUnlock;
-      // 先请求官方地址
-      const { url: officialUrl, isTrial } = await getOnlineUrl(songId);
-      if (officialUrl && !isTrial) {
-        // 官方可播放且非试听
-        this.nextPrefetch = { id: songId, url: officialUrl, ublock: false };
-      } else if (canUnlock) {
-        // 官方失败或为试听时尝试解锁
-        const unlockUrl = await getUnlockSongUrl(nextSong);
-        if (unlockUrl) {
-          this.nextPrefetch = { id: songId, url: unlockUrl, ublock: true };
-        } else if (officialUrl) {
-          // 解锁失败，若官方为试听且允许试听，保留官方试听地址
-          this.nextPrefetch = { id: songId, url: officialUrl, ublock: false };
-        } else {
-          this.nextPrefetch = { id: songId, url: null, ublock: false };
-        }
-      } else {
-        // 不可解锁，仅保留官方结果（可能为空）
-        this.nextPrefetch = { id: songId, url: officialUrl, ublock: false };
-      }
-    } catch (error) {
-      console.error("Error prefetching next song url:", error);
-    }
-  }
-  /**
    * 创建播放器
    * @param src 播放地址
    * @param autoPlay 是否自动播放
@@ -191,10 +124,8 @@ class Player {
     const settingStore = useSettingStore();
     // 播放信息
     const { id, path, type } = musicStore.playSong;
-
     // 统一重置底层播放器
     this.resetPlayerCore();
-
     // 创建播放器
     this.player = new Howl({
       src,
@@ -212,12 +143,8 @@ class Player {
     if (!settingStore.showSpectrums) this.toggleOutputDevice();
     // 自动播放
     if (autoPlay) await this.play();
-    // // 获取歌曲附加信息 - 非电台和本地
-    // if (type !== "radio" && !path) getLyricData(id);
-    // else resetSongLyric();
     // 获取歌词数据
     lyricManager.handleLyric(id, path);
-
     // 新增播放历史
     if (type !== "radio") dataStore.setHistory(musicStore.playSong);
     // 获取歌曲封面主色
@@ -227,7 +154,7 @@ class Player {
     // 开发模式
     if (isDev) window.player = this.player;
     // 预载下一首播放地址
-    this.prefetchNextSongUrl();
+    this.nextPrefetch = await getNextSongUrl();
   }
   /**
    * 播放器事件
@@ -321,7 +248,6 @@ class Player {
       this.playerInterval.pause();
       // statusStore.playStatus = false;
       console.log("⏹️ song end:", playSongData);
-
       // 检查是否需要在歌曲结束时执行自动关闭
       const statusStore = useStatusStore();
       if (
@@ -333,7 +259,6 @@ class Player {
         this.executeAutoClose();
         return;
       }
-
       this.nextOrPrev("next", true, true);
     });
     // 错误
@@ -507,13 +432,17 @@ class Player {
       } else {
         musicStore.playSong.cover = "/images/song.jpg?assest";
       }
-      // 获取主色
-      runIdle(() => getCoverColor(musicStore.playSong.cover));
-      // 获取歌词数据
-      // const { lyric, format } = await window.electron.ipcRenderer.invoke("get-music-lyric", path);
-      // parseLocalLyric(lyric, format);
       // 更新媒体会话
       this.updateMediaSession();
+      // 获取元数据
+      const infoData: { format: IFormat } = await window.electron.ipcRenderer.invoke(
+        "get-music-metadata",
+        path,
+      );
+      // 更新音质
+      musicStore.playSong.quality = handleSongQuality(infoData.format.bitrate ?? 0);
+      // 获取主色
+      runIdle(() => getCoverColor(musicStore.playSong.cover));
     } catch (error) {
       window.$message.error("获取本地歌曲元信息失败");
       console.error("Failed to parse local music info:", error);
@@ -523,8 +452,9 @@ class Player {
    * 重置状态
    */
   resetStatus() {
-    const statusStore = useStatusStore();
     const musicStore = useMusicStore();
+    const statusStore = useStatusStore();
+    const settingStore = useSettingStore();
     // 重置状态
     statusStore.$patch({
       currentTime: 0,
@@ -534,10 +464,11 @@ class Player {
       playStatus: false,
       playLoading: false,
     });
-    musicStore.$patch({
-      playPlaylistId: 0,
-      playSong: {},
-    });
+    musicStore.playPlaylistId = 0;
+    musicStore.resetMusicData();
+    if (settingStore.showTaskbarProgress) {
+      window.electron.ipcRenderer.send("set-bar", "none");
+    }
   }
   /**
    * 初始化播放器
@@ -577,7 +508,8 @@ class Player {
         }
       }
       // 在线歌曲
-      else if (id && dataStore.playList.length) {
+      else if (id && (dataStore.playList.length || statusStore.personalFmMode)) {
+        // 播放地址
         let playerUrl: string | null = null;
 
         // 获取歌曲 URL 单独 try-catch
@@ -590,10 +522,13 @@ class Player {
           if (cached && cached.id === songId && cached.url) {
             playerUrl = cached.url;
             statusStore.playUblock = cached.ublock;
+            statusStore.songQuality = cached.quality;
           } else {
             const canUnlock = isElectron && type !== "radio" && settingStore.useSongUnlock;
-            const { url: officialUrl, isTrial } = await getOnlineUrl(songId);
-
+            const { url: officialUrl, isTrial, quality } = await getOnlineUrl(songId);
+            // 更新音质
+            statusStore.songQuality = quality;
+            // 更新播放地址
             if (officialUrl && !isTrial) {
               playerUrl = officialUrl;
               statusStore.playUblock = false;
@@ -720,13 +655,16 @@ class Player {
       const { playList } = dataStore;
       const { playSong } = musicStore;
       const { playSongMode, playHeartbeatMode } = statusStore;
-      // 列表长度
-      const playListLength = playList.length;
-      // 播放列表是否为空
-      if (playListLength === 0) throw new Error("Play list is empty");
       // 若为私人FM
       if (statusStore.personalFmMode) {
         await this.initPersonalFM(true);
+        return;
+      }
+      // 列表长度
+      const playListLength = playList.length;
+      // 播放列表是否为空
+      if (playListLength === 0) {
+        window.$message.error("播放列表为空，请添加歌曲");
         return;
       }
       // 只有一首歌的特殊处理
@@ -1106,7 +1044,6 @@ class Player {
    */
   async cleanPlayList() {
     const dataStore = useDataStore();
-    const musicStore = useMusicStore();
     const statusStore = useStatusStore();
     // 停止播放
     Howler.unload();
@@ -1119,9 +1056,9 @@ class Player {
       personalFmMode: false,
       playIndex: -1,
     });
-    musicStore.resetMusicData();
-    dataStore.setPlayList([]);
-    window.$message.success("已清空播放列表");
+    // 清空播放列表及缓存
+    await dataStore.setPlayList([]);
+    await dataStore.clearOriginalPlayList();
   }
   /**
    * 切换输出设备
@@ -1332,8 +1269,6 @@ class Player {
         } else {
           await getPersonalFmData();
         }
-        // 清理并播放
-        this.resetStatus();
         await this.initPlayer();
       }
     } catch (error) {

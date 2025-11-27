@@ -19,12 +19,12 @@
         alt="cover"
       />
       <!-- 流体效果 -->
-      <FluidBackground
+      <BackgroundRender
         v-else-if="settingStore.playerBackgroundType === 'animation'"
-        :key="musicStore.songCover"
-        :src="musicStore.songCover"
-        :speed="0.8"
-        :brightness="0.1"
+        :album="musicStore.songCover"
+        :fps="settingStore.playerBackgroundFps ?? 60"
+        :flowSpeed="settingStore.playerBackgroundFlowSpeed ?? 4"
+        :hasLyric="musicStore.isHasLrc"
       />
     </Transition>
   </div>
@@ -32,6 +32,7 @@
 
 <script setup lang="ts">
 import { useMusicStore, useSettingStore, useStatusStore } from "@/stores";
+import BackgroundRender from "../Special/BackgroundRender.vue";
 
 const musicStore = useMusicStore();
 const statusStore = useStatusStore();

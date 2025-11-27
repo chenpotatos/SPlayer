@@ -177,7 +177,10 @@ class Player {
       // 允许跨域
       if (settingStore.showSpectrums) {
         const audioDom = this.getAudioDom();
-        if (audioDom) audioDom.crossOrigin = "anonymous";
+        if (audioDom) {
+          audioDom.crossOrigin = "anonymous";
+          this.initSpectrumData();
+        }
       }
       // 恢复均衡器：如持久化为开启，则在音频节点可用后立即构建 EQ 链
       if (isElectron && statusStore.eqEnabled) {
@@ -353,22 +356,44 @@ class Player {
     // 更新数据
     navigator.mediaSession.metadata = new window.MediaMetadata(metaData);
   }
-  // 生成频谱数据
-  private generateSpectrumData() {
-    const statusStore = useStatusStore();
+  /**
+   * 初始化音频可视化
+   */
+  private initSpectrumData() {
+    try {
+      if (this.audioContext || !isElectron) return;
+      // 获取音频元素
+      const audioDom = this.getAudioDom();
+      if (!audioDom) return;
+      // 通过统一管理器创建/获取基础图
+      const nodes = audioContextManager.getOrCreateBasicGraph(audioDom);
+      if (!nodes) return;
+      // 记录节点
+      this.audioContext = nodes.context;
+      this.analyser = nodes.analyser;
+      // 可视化保持与原有行为一致：连接到输出
+      this.analyser.connect(this.audioContext.destination);
+      // 配置数据缓冲
+      const bufferLength = this.analyser.frequencyBinCount;
+      this.dataArray = new Uint8Array(bufferLength);
+      console.log("🎼 Initialize music spectrum successfully");
+    } catch (error) {
+      console.error("🎼 Initialize music spectrum failed:", error);
+    }
+  }
+  /**
+   * 获取频谱数据
+   * @returns 频谱数据
+   */
+  getSpectrumData(): Uint8Array | null {
+    // 尝试初始化
     if (!this.analyser || !this.dataArray) {
       this.initSpectrumData();
     }
-    // 更新频谱数据
-    const updateSpectrumData = () => {
-      if (this.analyser && this.dataArray) {
-        this.analyser.getByteFrequencyData(this.dataArray);
-        // 保存数据
-        statusStore.spectrumsData = Array.from(this.dataArray);
-      }
-      requestAnimationFrame(updateSpectrumData);
-    };
-    updateSpectrumData();
+    // 未初始化成功则返回 null
+    if (!this.analyser || !this.dataArray) return null;
+    this.analyser.getByteFrequencyData(this.dataArray);
+    return this.dataArray;
   }
   /**
    * 集中处理播放错误与重试策略
@@ -421,6 +446,7 @@ class Player {
   private async parseLocalMusicInfo(path: string) {
     try {
       const musicStore = useMusicStore();
+      const statusStore = useStatusStore();
       // 获取封面数据
       const coverData = await window.electron.ipcRenderer.invoke("get-music-cover", path);
       if (coverData) {
@@ -440,7 +466,7 @@ class Player {
         path,
       );
       // 更新音质
-      musicStore.playSong.quality = handleSongQuality(infoData.format.bitrate ?? 0);
+      statusStore.songQuality = handleSongQuality(infoData.format.bitrate ?? 0);
       // 获取主色
       runIdle(() => getCoverColor(musicStore.playSong.cover));
     } catch (error) {
@@ -904,7 +930,6 @@ class Player {
     const statusStore = useStatusStore();
     // 获取配置
     const { showTip, play } = options;
-
     // 处理随机播放模式
     let processedData = cloneDeep(data);
     if (statusStore.playSongMode === "shuffle") {
@@ -913,7 +938,6 @@ class Player {
       // 随机排序
       processedData = shuffleArray(processedData);
     }
-
     // 更新列表
     await dataStore.setPlayList(processedData);
     // 关闭特殊模式
@@ -1080,34 +1104,6 @@ class Player {
       console.error("Failed to change audio output device:", error);
     }
   }
-  /**
-   * 初始化音频可视化
-   */
-  initSpectrumData() {
-    try {
-      if (this.audioContext || !isElectron) return;
-      // 获取音频元素
-      const audioDom = this.getAudioDom();
-      if (!audioDom) return;
-      // 通过统一管理器创建/获取基础图
-      const nodes = audioContextManager.getOrCreateBasicGraph(audioDom);
-      if (!nodes) return;
-      // 记录节点
-      this.audioContext = nodes.context;
-      this.analyser = nodes.analyser;
-      // 可视化保持与原有行为一致：连接到输出
-      this.analyser.connect(this.audioContext.destination);
-      // 配置数据缓冲
-      const bufferLength = this.analyser.frequencyBinCount;
-      this.dataArray = new Uint8Array(bufferLength);
-      // 更新频谱数据
-      this.generateSpectrumData();
-      console.log("🎼 Initialize music spectrum successfully");
-    } catch (error) {
-      console.error("🎼 Initialize music spectrum failed:", error);
-    }
-  }
-
   /**
    * 启用均衡器
    * @param options 配置
@@ -1346,7 +1342,6 @@ class Player {
       this.autoCloseInterval = undefined;
     }
   }
-
   /**
    * 执行自动关闭
    */

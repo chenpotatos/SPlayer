@@ -110,6 +110,10 @@ export interface SettingState {
   playerType: "cover" | "record";
   /** 背景类型 */
   playerBackgroundType: "none" | "animation" | "blur" | "color";
+  /** 背景动画帧率 */
+  playerBackgroundFps: number;
+  /** 背景动画流动速度 */
+  playerBackgroundFlowSpeed: number;
   /** 记忆最后进度 */
   memoryLastSeek: boolean;
   /** 显示播放列表数量 */
@@ -152,8 +156,6 @@ export interface SettingState {
   useRealIP: boolean;
   /** 真实 IP 地址 */
   realIP: string;
-  /** 全屏播放器缓存 */
-  fullPlayerCache: boolean;
   /** 是否打卡歌曲 */
   scrobbleSong: boolean;
   /** 动态封面 */
@@ -202,7 +204,6 @@ export const useSettingStore = defineStore("setting", {
     showTaskbarProgress: false,
     checkUpdateOnStart: true,
     preventSleep: false,
-    fullPlayerCache: false,
     useKeepAlive: true,
     songLevel: "exhigh",
     playDevice: "default",
@@ -219,6 +220,8 @@ export const useSettingStore = defineStore("setting", {
     barLyricShow: true,
     playerType: "cover",
     playerBackgroundType: "blur",
+    playerBackgroundFps: 30,
+    playerBackgroundFlowSpeed: 4,
     memoryLastSeek: true,
     showPlaylistCount: true,
     showSpectrums: false,

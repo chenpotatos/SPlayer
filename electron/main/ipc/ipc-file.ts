@@ -33,35 +33,53 @@ const initFileIpc = (): void => {
   // 遍历音乐文件
   ipcMain.handle("get-music-files", async (_, dirPath: string) => {
     try {
+      // 校验路径有效性
+      if (!dirPath || dirPath.trim() === "") {
+        ipcLog.warn("⚠️ Empty directory path provided, skipping");
+        return [];
+      }
       // 规范化路径
       const filePath = resolve(dirPath).replace(/\\/g, "/");
+      // 检查目录是否存在
+      try {
+        await access(filePath);
+      } catch {
+        ipcLog.warn(`⚠️ Directory not accessible: ${filePath}`);
+        return [];
+      }
       console.info(`📂 Fetching music files from: ${filePath}`);
       // 查找指定目录下的所有音乐文件
       const musicFiles = await FastGlob("**/*.{mp3,wav,flac,aac,webm}", globOpt(filePath));
-      // 解析元信息
+      // 解析元信息（使用 allSettled 防止单个文件失败影响整体）
       const metadataPromises = musicFiles.map(async (file) => {
-        const filePath = join(dirPath, file);
-        // 处理元信息
-        const { common, format } = await parseFile(filePath);
-        // 获取文件大小
-        const { size } = await stat(filePath);
-        return {
-          id: getFileID(filePath),
-          name: common.title || basename(filePath),
-          artists: common.artists?.[0] || common.artist,
-          album: common.album || "",
-          alia: common.comment?.[0]?.text || "",
-          duration: (format?.duration ?? 0) * 1000,
-          size: (size / (1024 * 1024)).toFixed(2),
-          path: filePath,
-          quality: format.bitrate ?? 0,
-        };
+        const fullPath = join(dirPath, file);
+        try {
+          // 处理元信息
+          const { common, format } = await parseFile(fullPath);
+          // 获取文件大小
+          const { size } = await stat(fullPath);
+          return {
+            id: getFileID(fullPath),
+            name: common.title || basename(fullPath),
+            artists: common.artists?.[0] || common.artist,
+            album: common.album || "",
+            alia: common.comment?.[0]?.text || "",
+            duration: (format?.duration ?? 0) * 1000,
+            size: (size / (1024 * 1024)).toFixed(2),
+            path: fullPath,
+            quality: format.bitrate ?? 0,
+          };
+        } catch (err) {
+          ipcLog.warn(`⚠️ Failed to parse file: ${fullPath}`, err);
+          return null;
+        }
       });
-      const metadataArray = await Promise.all(metadataPromises);
-      return metadataArray;
+      const metadataResults = await Promise.all(metadataPromises);
+      // 过滤掉解析失败的文件
+      return metadataResults.filter((item) => item !== null);
     } catch (error) {
       ipcLog.error("❌ Error fetching music metadata:", error);
-      throw error;
+      return [];
     }
   });
 
@@ -360,10 +378,10 @@ const initFileIpc = (): void => {
         lyric?: string;
         songData?: any;
       } = {
-        fileName: "未知文件名",
-        fileType: "mp3",
-        path: app.getPath("downloads"),
-      },
+          fileName: "未知文件名",
+          fileType: "mp3",
+          path: app.getPath("downloads"),
+        },
     ): Promise<boolean> => {
       try {
         // 获取窗口

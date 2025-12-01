@@ -56,8 +56,8 @@
                 :light="pureLyricMode"
               />
               <!-- 歌词 -->
-              <MainAMLyric v-if="settingStore.useAMLyrics" />
-              <MainLyric v-else />
+              <MainAMLyric v-if="settingStore.useAMLyrics" :key="`am-lyric-${musicStore.playSong.id}`" />
+              <MainLyric v-else :key="`lyric-${musicStore.playSong.id}`" />
             </div>
           </div>
         </Transition>
@@ -82,7 +82,6 @@
 <script setup lang="ts">
 import { useStatusStore, useMusicStore, useSettingStore } from "@/stores";
 import { isElectron } from "@/utils/env";
-import { throttle } from "lodash-es";
 
 const musicStore = useMusicStore();
 const statusStore = useStatusStore();
@@ -108,7 +107,7 @@ const pureLyricMode = computed<boolean>(
 );
 
 // 主内容 key
-const playerContentKey = computed(() => `${statusStore.pureLyricMode}`);
+const playerContentKey = computed(() => `${musicStore.playSong.id}-${statusStore.pureLyricMode}`);
 
 // 数据是否居中
 const playerDataCenter = computed<boolean>(
@@ -139,13 +138,13 @@ const {
 }, 3000);
 
 // 鼠标移动
-const playerMove = throttle(
+const playerMove = useThrottleFn(
   () => {
     statusStore.playerMetaShow = true;
     if (!isPending.value) startShow();
   },
   300,
-  { trailing: false },
+  false,
 );
 
 // 停用隐藏
@@ -168,7 +167,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  console.log("离开播放器");
+  stopShow();
   if (isElectron) window.electron.ipcRenderer.send("prevent-sleep", false);
 });
 </script>

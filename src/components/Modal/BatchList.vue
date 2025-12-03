@@ -180,14 +180,17 @@ import {
   NInputGroup,
   NButton,
   NAlert,
+  NText,
+  NFlex,
 } from "naive-ui";
-import { useLocalStore, useSettingStore } from "@/stores";
+import { useLocalStore, useSettingStore, useDataStore } from "@/stores";
 import { isElectron } from "@/utils/env";
 import { songLevelData, getSongLevelsData } from "@/utils/meta";
 import { downloadSong } from "@/utils/download";
 
 const localStore = useLocalStore();
 const settingStore = useSettingStore();
+const dataStore = useDataStore();
 
 interface DataType {
   key?: number;
@@ -293,7 +296,6 @@ const tableCheck = (keys: DataTableRowKey[]) => {
   checkSongData.value = selectedRows.map((row) => row.origin).filter((song) => song) as SongType[];
 };
 
-// 范围选择处理
 // 范围选择处理
 const handleRangeSelect = () => {
   if (startRange.value === null || endRange.value === null) {
@@ -411,21 +413,27 @@ const startBatchDownload = () => {
 const executeBatchDownload = async (songs: SongType[]) => {
   if (!songs.length) return;
 
-  const total = songs.length;
-  let processed = 0;
-  let successCount = 0;
+  // 重置状态
+  dataStore.batchDownload.isDownloading = true;
+  dataStore.batchDownload.total = songs.length;
+  dataStore.batchDownload.processed = 0;
+  dataStore.batchDownload.success = 0;
+  dataStore.batchDownload.percent = 0;
+  dataStore.batchDownload.transferred = "0MB";
+  dataStore.batchDownload.totalSize = "0MB";
+
   let failCount = 0;
   const failedSongs: SongType[] = [];
 
-  const loadingMsg = window.$message.loading(`正在准备批量下载... 0/${total}`, { duration: 0 });
-
   // 监听下载进度
-  const onProgress = (_event: any, progress: { percent: number; transferredBytes: number; totalBytes: number }) => {
+  const onProgress = (
+    _event: any,
+    progress: { percent: number; transferredBytes: number; totalBytes: number },
+  ) => {
     const { percent, transferredBytes, totalBytes } = progress;
-    const percentStr = (percent * 100).toFixed(0) + "%";
-    const transferredStr = (transferredBytes / 1024 / 1024).toFixed(2) + "MB";
-    const totalStr = (totalBytes / 1024 / 1024).toFixed(2) + "MB";
-    loadingMsg.content = `正在批量下载... ${processed + 1}/${total} (成功 ${successCount}) - ${percentStr} ${transferredStr}/${totalStr}`;
+    dataStore.batchDownload.percent = Number((percent * 100).toFixed(0));
+    dataStore.batchDownload.transferred = (transferredBytes / 1024 / 1024).toFixed(2) + "MB";
+    dataStore.batchDownload.totalSize = (totalBytes / 1024 / 1024).toFixed(2) + "MB";
   };
 
   if (isElectron) {
@@ -434,15 +442,24 @@ const executeBatchDownload = async (songs: SongType[]) => {
 
   try {
     for (const song of songs) {
+      dataStore.batchDownload.currentSong = song.name;
       try {
         const result = await downloadSong({
           song,
           quality: selectedQuality.value,
           downloadPath: downloadPath.value,
+          skipIfExist: true,
         });
 
         if (result.success) {
-          successCount++;
+          dataStore.batchDownload.success++;
+          if (result.skipped) {
+            window.$notification.create({
+              title: "已跳过重复文件",
+              content: `${song.name} 已存在`,
+              duration: 2000,
+            });
+          }
           if (!isElectron) {
             // Browser download delay
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -457,15 +474,42 @@ const executeBatchDownload = async (songs: SongType[]) => {
         failCount++;
         failedSongs.push(song);
       } finally {
-        processed++;
-        loadingMsg.content = `正在批量下载... ${processed}/${total} (成功 ${successCount})`;
+        dataStore.batchDownload.processed++;
+        // Reset progress for next song
+        dataStore.batchDownload.percent = 0;
+        dataStore.batchDownload.transferred = "0MB";
+        dataStore.batchDownload.totalSize = "0MB";
       }
     }
 
     if (failCount > 0) {
       window.$dialog.warning({
         title: "下载完成，但有部分失败",
-        content: `${successCount} 首下载成功，${failCount} 首下载失败。是否重试失败的歌曲？`,
+        content: () =>
+          h("div", [
+            h(
+              "div",
+              { style: "margin-bottom: 10px" },
+              `${dataStore.batchDownload.success} 首下载成功，${failCount} 首下载失败。`,
+            ),
+            h(
+              "div",
+              {
+                style:
+                  "max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.05); padding: 8px; border-radius: 4px;",
+              },
+              [
+                h("div", { style: "font-weight: bold; margin-bottom: 4px" }, "失败列表："),
+                ...failedSongs.map((s) =>
+                  h(
+                    "div",
+                    { style: "font-size: 12px" },
+                    `${s.name} - ${isArray(s.artists) ? s.artists[0]?.name : s.artists || "未知歌手"}`,
+                  ),
+                ),
+              ],
+            ),
+          ]),
         positiveText: "重试失败歌曲",
         negativeText: "取消",
         onPositiveClick: () => {
@@ -473,17 +517,16 @@ const executeBatchDownload = async (songs: SongType[]) => {
         },
       });
     } else {
-      window.$message.success(`批量下载完成，共 ${successCount} 首`);
+      window.$message.success(`批量下载完成，共 ${dataStore.batchDownload.success} 首`);
     }
   } catch (error) {
     console.error("Batch download error:", error);
-    window.$message.error("批量下载过程中出现错误");
     window.$message.error("批量下载过程中出现错误");
   } finally {
     if (isElectron) {
       window.electron.ipcRenderer.removeListener("download-progress", onProgress);
     }
-    loadingMsg.destroy();
+    dataStore.batchDownload.isDownloading = false;
   }
 };
 </script>

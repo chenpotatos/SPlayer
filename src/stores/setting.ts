@@ -7,17 +7,17 @@ export interface SettingState {
   themeMode: "light" | "dark" | "auto";
   /** 主题类别 */
   themeColorType:
-  | "default"
-  | "orange"
-  | "blue"
-  | "pink"
-  | "brown"
-  | "indigo"
-  | "green"
-  | "purple"
-  | "yellow"
-  | "teal"
-  | "custom";
+    | "default"
+    | "orange"
+    | "blue"
+    | "pink"
+    | "brown"
+    | "indigo"
+    | "green"
+    | "purple"
+    | "yellow"
+    | "teal"
+    | "custom";
   /** 主题自定义颜色 */
   themeCustomColor: string;
   /** 全局着色 */
@@ -72,6 +72,12 @@ export interface SettingState {
   downloadCover: boolean;
   /** 下载歌词 */
   downloadLyric: boolean;
+  /** 下载歌词翻译 */
+  downloadLyricTranslation: boolean;
+  /** 下载歌词音译 */
+  downloadLyricRomaji: boolean;
+  /** 模拟播放下载 */
+  usePlaybackForDownload: boolean;
   /** 保存元信息文件 */
   saveMetaFile: boolean;
   /** 代理协议 */
@@ -82,14 +88,14 @@ export interface SettingState {
   proxyPort: number;
   /** 歌曲音质 */
   songLevel:
-  | "standard"
-  | "higher"
-  | "exhigh"
-  | "lossless"
-  | "hires"
-  | "jyeffect"
-  | "sky"
-  | "jymaster";
+    | "standard"
+    | "higher"
+    | "exhigh"
+    | "lossless"
+    | "hires"
+    | "jyeffect"
+    | "sky"
+    | "jymaster";
   /** 播放设备 */
   playDevice: "default" | string;
   /** 自动播放 */
@@ -136,6 +142,8 @@ export interface SettingState {
   useAMSpring: boolean;
   /** 是否启用在线 TTML 歌词 */
   enableTTMLLyric: boolean;
+  /** AMLL DB 服务地址 */
+  amllDbServer: string;
   /** 菜单显示封面 */
   menuShowCover: boolean;
   /** 菜单展开项 */
@@ -215,6 +223,10 @@ export interface SettingState {
     visible: boolean;
     order: number;
   }>;
+  /** 自定义协议注册 **/
+  registryProtocol: {
+    orpheus: boolean;
+  };
 }
 
 export const useSettingStore = defineStore("setting", {
@@ -270,6 +282,7 @@ export const useSettingStore = defineStore("setting", {
     useAMLyrics: false,
     useAMSpring: false,
     enableTTMLLyric: true,
+    amllDbServer: "https://amll-ttml-db.stevexmh.net",
     showYrc: true,
     showYrcAnimation: true,
     showYrcLongEffect: true,
@@ -293,6 +306,9 @@ export const useSettingStore = defineStore("setting", {
     downloadMeta: true,
     downloadCover: true,
     downloadLyric: true,
+    downloadLyricTranslation: true,
+    downloadLyricRomaji: true,
+    usePlaybackForDownload: false,
     saveMetaFile: false,
     proxyProtocol: "off",
     proxyServe: "127.0.0.1",
@@ -324,6 +340,9 @@ export const useSettingStore = defineStore("setting", {
       { key: "radio", name: "推荐播客", visible: true, order: 4 },
       { key: "album", name: "新碟上架", visible: true, order: 5 },
     ],
+    registryProtocol: {
+      orpheus: false,
+    },
   }),
   getters: {
     /**
@@ -351,11 +370,12 @@ export const useSettingStore = defineStore("setting", {
       }
       window.$message.info(
         `已切换至
-        ${this.themeMode === "auto"
-          ? "跟随系统"
-          : this.themeMode === "light"
-            ? "浅色模式"
-            : "深色模式"
+        ${
+          this.themeMode === "auto"
+            ? "跟随系统"
+            : this.themeMode === "light"
+              ? "浅色模式"
+              : "深色模式"
         }`,
         {
           showIcon: false,

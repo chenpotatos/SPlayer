@@ -3,10 +3,7 @@ import { keywords, regexes } from "@/assets/data/exclude";
 import { SongUnlockServer } from "@/utils/songManager";
 import type { SongLevelType } from "@/types/main";
 import { defaultAMLLDbServer } from "@/utils/meta";
-import {
-  CURRENT_SETTING_SCHEMA_VERSION,
-  settingMigrations,
-} from "./migrations/settingMigrations";
+import { CURRENT_SETTING_SCHEMA_VERSION, settingMigrations } from "./migrations/settingMigrations";
 
 export interface SettingState {
   /** Schema 版本号（可选，用于数据迁移） */
@@ -243,6 +240,8 @@ export interface SettingState {
     visible: boolean;
     order: number;
   }>;
+  /** 用户协议版本 */
+  userAgreementVersion: string;
   /** 自定义协议注册 **/
   registryProtocol: {
     orpheus: boolean;
@@ -251,7 +250,7 @@ export interface SettingState {
 
 export const useSettingStore = defineStore("setting", {
   state: (): SettingState => ({
-    schemaVersion: CURRENT_SETTING_SCHEMA_VERSION,
+    schemaVersion: 0,
     themeMode: "auto",
     themeColorType: "default",
     themeCustomColor: "#fe7971",
@@ -367,6 +366,7 @@ export const useSettingStore = defineStore("setting", {
       { key: "radio", name: "推荐播客", visible: true, order: 4 },
       { key: "album", name: "新碟上架", visible: true, order: 5 },
     ],
+    userAgreementVersion: "",
     registryProtocol: {
       orpheus: false,
     },

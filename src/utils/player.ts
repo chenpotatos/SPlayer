@@ -113,7 +113,12 @@ class Player {
     const errorCallback = (e: Event) => {
       const playSongData = songManager.getPlaySongData();
       console.error("❌ song error:", playSongData, e);
-      this.handlePlaybackError();
+      // 提取错误码
+      let errCode: number | undefined;
+      if ("detail" in e && e.detail) {
+        errCode = (e.detail as { errorCode?: number }).errorCode;
+      }
+      this.handlePlaybackError(errCode);
     };
     audioManager.on("error", errorCallback);
     this.eventCallbacks.set("error", errorCallback);
@@ -212,8 +217,9 @@ class Player {
       if (seek && seek > 0) {
         audioManager.seek(seek / 1000);
       }
-    } catch (e) {
-      console.error("Player create failed", e);
+    } catch (err) {
+      console.error("❌ 播放器初始化失败:", err);
+      throw err;
     }
     // 获取歌词数据
     lyricManager.handleLyric(id, path);
@@ -301,19 +307,85 @@ class Player {
     const dataStore = useDataStore();
     const playSongData = songManager.getPlaySongData();
     const currentSongId = playSongData?.type === "radio" ? playSongData.dj?.id : playSongData?.id;
+    // 保存当前播放进度，用于恢复
+    const currentSeek = this.getSeek();
     // 初始化/切换曲目时重置计数
     if (!this.retryInfo.songId || this.retryInfo.songId !== Number(currentSongId || 0)) {
       this.retryInfo = { songId: Number(currentSongId || 0), count: 0 };
     }
     this.retryInfo.count += 1;
-    // 错误码 2：资源过期或临时网络错误
-    if (errCode === 2 && this.retryInfo.count <= 2) {
-      await this.initPlayer(true, this.getSeek());
+    // 如果错误码未定义或为 0，且重试次数过多，直接跳过避免无限重试
+    if ((errCode === undefined || errCode === 0) && this.retryInfo.count > 2) {
+      console.warn("⚠️ 未知错误且重试次数过多，跳过重试:", {
+        count: this.retryInfo.count,
+        errCode,
+      });
+      this.retryInfo.count = 0;
+      if (dataStore.playList.length > 1) {
+        window.$message.error("播放失败，已跳至下一首");
+        await this.nextOrPrev("next");
+      } else {
+        window.$message.error("当前列表暂无可播放歌曲");
+        this.cleanPlayList();
+      }
       return;
     }
-    // 其它错误：最多 3 次
+    // 1：用户中止了加载，不进行重试
+    if (errCode === 1) {
+      console.log("⏸️ 用户中止播放，不进行重试");
+      this.retryInfo.count = 0;
+      return;
+    }
+    // 4：音频格式不被支持，直接跳到下一首
+    if (errCode === 4) {
+      console.error("❌ 音频格式不支持:", { songId: currentSongId, errorCode: errCode });
+      this.retryInfo.count = 0;
+      if (dataStore.playList.length > 1) {
+        window.$message.error("音频格式不支持，已跳至下一首");
+        await this.nextOrPrev("next");
+      } else {
+        window.$message.error("当前列表暂无可播放歌曲");
+        this.cleanPlayList();
+      }
+      return;
+    }
+    // 3：解码错误，通常无法通过重试解决，减少重试次数
+    if (errCode === 3) {
+      if (this.retryInfo.count <= 1) {
+        console.log("🔄 检测到解码错误，尝试重试:", { count: this.retryInfo.count });
+        if (this.retryInfo.count === 1) {
+          window.$message.info("播放出现问题，正在尝试恢复...");
+        }
+        await this.initPlayer(true, currentSeek);
+        return;
+      }
+      // 解码错误重试 1 次后直接跳过
+      console.error("❌ 解码错误，重试失败:", { songId: currentSongId, errorCode: errCode });
+      this.retryInfo.count = 0;
+      if (dataStore.playList.length > 1) {
+        window.$message.error("音频解码失败，已跳至下一首");
+        await this.nextOrPrev("next");
+      } else {
+        window.$message.error("当前列表暂无可播放歌曲");
+        this.cleanPlayList();
+      }
+      return;
+    }
+    // 2：资源过期或临时网络错误（通常是长时间暂停导致URL过期）
+    if (errCode === 2 && this.retryInfo.count <= 2) {
+      console.log("🔄 检测到资源过期，重新获取播放地址并从原位置继续:", currentSeek);
+      await this.initPlayer(true, currentSeek);
+      return;
+    }
+    // 其它错误：最多 3 次，首次重试从原位置开始
     if (this.retryInfo.count <= 3) {
-      await this.initPlayer(true, 0);
+      const seekPosition = this.retryInfo.count === 1 ? currentSeek : 0;
+      console.log("🔄 播放出错，尝试重试:", { count: this.retryInfo.count, seekPosition, errCode });
+      // 只在第一次重试时显示提示，避免过于频繁
+      if (this.retryInfo.count === 1) {
+        window.$message.info("播放出现问题，正在尝试恢复...");
+      }
+      await this.initPlayer(true, seekPosition);
       return;
     }
     // 超过次数：切到下一首或清空
@@ -419,6 +491,13 @@ class Player {
           await this.parseLocalMusicInfo(path);
         } catch (err) {
           console.error("播放器初始化错误（本地）：", err);
+          // createPlayer 内部已触发 handlePlaybackError，这里只记录日志
+          // 如果 createPlayer 没有触发错误处理，则手动触发
+          const errCode = audioManager.getErrorCode();
+          if (errCode === 0) {
+            // 如果没有错误码，可能是其他类型的错误，触发通用错误处理
+            await this.handlePlaybackError(undefined);
+          }
         }
       }
       // 在线歌曲
@@ -481,6 +560,13 @@ class Player {
             await this.createPlayer(playerUrl, autoPlay, seek);
           } catch (err) {
             console.error("播放器初始化错误（在线）：", err);
+            // createPlayer 内部已触发 handlePlaybackError，这里只记录日志
+            // 如果 createPlayer 没有触发错误处理，则手动触发
+            const errCode = audioManager.getErrorCode();
+            if (errCode === 0) {
+              // 如果没有错误码，可能是其他类型的错误，触发通用错误处理
+              await this.handlePlaybackError(undefined);
+            }
           }
         }
       }

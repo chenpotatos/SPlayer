@@ -105,7 +105,7 @@ const menuOptions = computed<MenuOption[] | MenuGroupOption[]>(() => {
               h(NText, null, () => "我喜欢的音乐"),
               !settingStore.hideHeartbeatMode
                 ? h(NButton, {
-                    type: "tertiary",
+                    type: "primary",
                     round: true,
                     strong: true,
                     secondary: true,
@@ -145,7 +145,7 @@ const menuOptions = computed<MenuOption[] | MenuGroupOption[]>(() => {
               },
               () => "下载管理",
             ),
-          show: isElectron && !settingStore.hideDownload,
+          show: statusStore.isDeveloperMode && isElectron && !settingStore.hideDownload,
           icon: renderIcon("Download"),
         },
         {
@@ -223,7 +223,7 @@ const renderPlaylist = (playlist: CoverType[], showCover: boolean) => {
         ? h("div", { class: "pl-cover" }, [
             h(NAvatar, {
               src: playlist.coverSize?.s || playlist.cover,
-              fallbackSrc: "/images/album.jpg?assest",
+              fallbackSrc: "/images/album.jpg?asset",
               lazy: true,
             }),
             h(NEllipsis, null, () => playlist.name),
@@ -310,17 +310,18 @@ const checkMenuItem = () => {
     (router.currentRoute.value.matched?.[0]?.name as string) ||
     (router.currentRoute.value?.name as string);
   if (!routerName) return;
-  // 处理本地歌曲子路由
-  if (routerName.startsWith("local-")) {
-    routerName = "local";
-  }
-  // 处理收藏子路由
-  if (routerName.startsWith("like-") && routerName !== "like-songs") {
-    routerName = "like";
-  }
-  // 处理下载子路由
-  if (routerName.startsWith("download-")) {
-    routerName = "download";
+  // 处理路由名称
+  const prefixMap = [
+    { prefix: "discover-", name: "discover" },
+    { prefix: "local-", name: "local" },
+    { prefix: "like-", name: "like", exclude: "like-songs" },
+    { prefix: "download-", name: "download" },
+  ];
+  for (const item of prefixMap) {
+    if (routerName.startsWith(item.prefix) && (!item.exclude || routerName !== item.exclude)) {
+      routerName = item.name;
+      break;
+    }
   }
   // 显示菜单
   menuRef.value?.showOption(routerName);

@@ -29,8 +29,8 @@
       </n-card>
       <n-card class="set-item">
         <div class="label">
-          <n-text class="name">全局主题色</n-text>
-          <n-text class="tip" :depth="3">更改全局主题色</n-text>
+          <n-text class="name">主题配置</n-text>
+          <n-text class="tip" :depth="3">更改主题色或自定义图片</n-text>
         </div>
         <n-select
           v-model:value="settingStore.themeColorType"
@@ -49,9 +49,9 @@
           </div>
           <n-color-picker
             v-model:value="settingStore.themeCustomColor"
-            class="set"
             :show-alpha="false"
             :modes="['hex']"
+            class="set"
           />
         </n-card>
       </n-collapse-transition>
@@ -70,7 +70,7 @@
       <n-card class="set-item">
         <div class="label">
           <n-text class="name">全局动态取色</n-text>
-          <n-text class="tip" :depth="3">主题色是否跟随封面，目前感觉不好看</n-text>
+          <n-text class="tip" :depth="3">主题色是否跟随封面，开启后自定义主题色将失效</n-text>
         </div>
         <n-switch
           v-model:value="settingStore.themeFollowCover"
@@ -215,62 +215,6 @@
       </n-card>
       <n-card class="set-item">
         <div class="label">
-          <n-text class="name">歌词区域字体</n-text>
-          <n-text class="tip" :depth="3"> 是否独立更改歌词区域字体 </n-text>
-        </div>
-        <n-flex>
-          <Transition name="fade" mode="out-in">
-            <n-button
-              v-if="settingStore.LyricFont !== 'follow'"
-              type="primary"
-              strong
-              secondary
-              @click="settingStore.LyricFont = 'follow'"
-            >
-              恢复默认
-            </n-button>
-          </Transition>
-          <n-select
-            v-model:value="settingStore.LyricFont"
-            :options="[
-              { label: '跟随全局', value: 'follow' },
-              ...allFontsData.filter((v) => v.value !== 'default'),
-            ]"
-            class="set"
-            filterable
-          />
-        </n-flex>
-      </n-card>
-      <n-card class="set-item">
-        <div class="label">
-          <n-text class="name">日语歌词字体</n-text>
-          <n-text class="tip" :depth="3"> 是否在歌词为日语时单独设置字体 </n-text>
-        </div>
-        <n-flex>
-          <Transition name="fade" mode="out-in">
-            <n-button
-              v-if="settingStore.japaneseLyricFont !== 'follow'"
-              type="primary"
-              strong
-              secondary
-              @click="settingStore.japaneseLyricFont = 'follow'"
-            >
-              恢复默认
-            </n-button>
-          </Transition>
-          <n-select
-            v-model:value="settingStore.japaneseLyricFont"
-            :options="[
-              { label: '跟随全局', value: 'follow' },
-              ...allFontsData.filter((v) => v.value !== 'default'),
-            ]"
-            class="set"
-            filterable
-          />
-        </n-flex>
-      </n-card>
-      <n-card class="set-item">
-        <div class="label">
           <n-text class="name">关闭软件时</n-text>
           <n-text class="tip" :depth="3">选择关闭软件的方式</n-text>
         </div>
@@ -322,7 +266,12 @@
             该协议通常用于官方网页端唤起官方客户端， 启用后可能导致官方客户端无法被唤起
           </n-text>
         </div>
-        <n-switch v-model:value="settingStore.registryProtocol.orpheus" class="set" :round="false" @update:value="orpheusChange" />
+        <n-switch
+          v-model:value="settingStore.registryProtocol.orpheus"
+          class="set"
+          :round="false"
+          @update:value="orpheusChange"
+        />
       </n-card>
       <n-card class="set-item">
         <div class="label">
@@ -448,12 +397,12 @@ const modeChange = (val: boolean) => {
 
 // 全局着色更改
 const themeGlobalColorChange = (val: boolean) => {
-  if (val)  getCoverColor(musicStore.songCover);
+  if (val) getCoverColor(musicStore.songCover);
 };
 
 // 注册或取消注册协议
 const orpheusChange = async (isRegistry: boolean) => {
-  sendRegisterProtocol("orpheus", isRegistry)
+  sendRegisterProtocol("orpheus", isRegistry);
 };
 
 onMounted(() => {

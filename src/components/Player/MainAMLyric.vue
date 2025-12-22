@@ -20,6 +20,10 @@
           '--amll-lyric-player-font-size': settingStore.lyricFontSize + 'px',
           '--ja-font-family':
             settingStore.japaneseLyricFont !== 'follow' ? settingStore.japaneseLyricFont : '',
+          '--en-font-family':
+            settingStore.englishLyricFont !== 'follow' ? settingStore.englishLyricFont : '',
+          '--ko-font-family':
+            settingStore.koreanLyricFont !== 'follow' ? settingStore.koreanLyricFont : '',
           'font-weight': settingStore.lyricFontBold ? 'bold' : 'normal',
           'font-family': settingStore.LyricFont !== 'follow' ? settingStore.LyricFont : '',
         }"
@@ -38,7 +42,6 @@ import { type LyricLine } from "@applemusic-like-lyrics/lyric";
 import { useMusicStore, useSettingStore, useStatusStore } from "@/stores";
 import { getLyricLanguage } from "@/utils/format";
 import { usePlayerController } from "@/core/player/PlayerController";
-import LyricMenu from "./LyricMenu.vue";
 
 const musicStore = useMusicStore();
 const statusStore = useStatusStore();
@@ -157,9 +160,14 @@ onBeforeUnmount(() => {
       }
     }
   }
-
   :lang(ja) {
     font-family: var(--ja-font-family);
+  }
+  :lang(en) {
+    font-family: var(--en-font-family);
+  }
+  :lang(ko) {
+    font-family: var(--ko-font-family);
   }
 }
 

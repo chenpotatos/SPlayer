@@ -32,12 +32,15 @@ const ipcService = {
   /**
    * 发送歌曲信息
    * @param title 歌曲标题
-   * @param artist 歌手
    * @param name 歌曲名称
+   * @param artist 歌手
+   * @param album 专辑
    */
-  sendSongChange: (title: string, artist: string, name: string) => {
+  sendSongChange: (title: string, name: string, artist: string, album: string) => {
     if (!isElectron) return;
-    window.electron.ipcRenderer.send("play-song-change", `${title} | SPlayer`);
+    // 获取歌曲时长
+    const duration = getPlaySongData()?.duration ?? 0;
+    window.electron.ipcRenderer.send("play-song-change", { title, name, artist, album, duration });
     window.electron.ipcRenderer.send("update-desktop-lyric-data", {
       playName: name,
       artistName: artist,
@@ -167,6 +170,48 @@ class PlayerController {
       if (requestToken === this.currentRequestToken) {
         statusStore.playLoading = false;
       }
+    }
+  }
+
+  /**
+   * 切换音质（仅切换音频源，不重新加载歌词）
+   * @param seek 当前播放进度（毫秒）
+   * @param autoPlay 是否自动播放（默认保持当前状态）
+   */
+  async switchQuality(seek: number = 0, autoPlay?: boolean) {
+    const statusStore = useStatusStore();
+    const songManager = useSongManager();
+    const audioManager = useAudioManager();
+
+    const playSongData = getPlaySongData();
+    if (!playSongData || playSongData.path) return;
+
+    // 如果未指定 autoPlay，则保持当前播放状态
+    const shouldAutoPlay = autoPlay ?? statusStore.playStatus;
+
+    try {
+      statusStore.playLoading = true;
+      // 清除预取缓存，强制重新获取
+      songManager.clearPrefetch();
+      // 获取新音频源
+      const audioSource = await songManager.getAudioSource(playSongData);
+      if (!audioSource.url) {
+        window.$message.error("切换音质失败");
+        return;
+      }
+      console.log(`🔄 [${playSongData.id}] 切换音质:`, audioSource);
+      // 更新音质和解锁状态
+      statusStore.songQuality = audioSource.quality;
+      statusStore.playUblock = audioSource.isUnlocked ?? false;
+      // 停止当前播放
+      audioManager.stop();
+      // 执行底层播放，保持进度，保持原播放状态
+      await this.loadAndPlay(audioSource.url, shouldAutoPlay, seek);
+    } catch (error) {
+      console.error("❌ 切换音质失败:", error);
+      window.$message.error("切换音质失败");
+    } finally {
+      statusStore.playLoading = false;
     }
   }
 
@@ -312,15 +357,15 @@ class PlayerController {
         // 更新喜欢状态
         ipcService.sendLikeStatus(dataStore.isLikeSong(playSongData?.id || 0));
         // 更新信息
-        const { name, artist } = getPlayerInfoObj() || {};
+        const { name, artist, album } = getPlayerInfoObj() || {};
         const playTitle = `${name} - ${artist}`;
-        ipcService.sendSongChange(playTitle, artist || "", name || "");
+        ipcService.sendSongChange(playTitle, name || "", artist || "", album || "");
       }
     });
 
     // 播放开始
     audioManager.on("play", () => {
-      const { name, artist } = getPlayerInfoObj() || {};
+      const { name, artist, album } = getPlayerInfoObj() || {};
       const playTitle = `${name} - ${artist}`;
       // 更新状态
       statusStore.playStatus = true;
@@ -332,7 +377,7 @@ class PlayerController {
       lastfmScrobbler.resume();
       // IPC 通知
       ipcService.sendPlayStatus(true);
-      ipcService.sendSongChange(playTitle, artist || "", name || "");
+      ipcService.sendSongChange(playTitle, name || "", artist || "", album || "");
       console.log(`▶️ [${musicStore.playSong?.id}] 歌曲播放:`, name);
     });
 
@@ -445,6 +490,14 @@ class PlayerController {
 
       this.retryInfo.count = 0;
       this.failSkipCount++;
+
+      // 连续跳过 3 首直接暂停
+      if (this.failSkipCount >= 3) {
+        window.$message.error("播放失败次数过多，已停止播放");
+        this.pause(true);
+        this.failSkipCount = 0;
+        return;
+      }
 
       // 列表只有一首，或连续跳过所有歌曲
       if (dataStore.playList.length <= 1 || this.failSkipCount >= dataStore.playList.length) {
@@ -899,11 +952,11 @@ class PlayerController {
           ? song.album.name
           : String(song.album),
       artwork: [
-        { src: musicStore.getSongCover("s"), sizes: "100x100", type: "image/jpeg" },
-        { src: musicStore.getSongCover("m"), sizes: "300x300", type: "image/jpeg" },
-        { src: musicStore.getSongCover("cover"), sizes: "512x512", type: "image/jpeg" },
-        { src: musicStore.getSongCover("l"), sizes: "1024x1024", type: "image/jpeg" },
-        { src: musicStore.getSongCover("xl"), sizes: "1920x1920", type: "image/jpeg" },
+        { src: musicStore.getSongCover("s") || musicStore.playSong.cover || "", sizes: "100x100", type: "image/jpeg" },
+        { src: musicStore.getSongCover("m") || musicStore.playSong.cover || "", sizes: "300x300", type: "image/jpeg" },
+        { src: musicStore.getSongCover("cover") || musicStore.playSong.cover || "", sizes: "512x512", type: "image/jpeg" },
+        { src: musicStore.getSongCover("l") || musicStore.playSong.cover || "", sizes: "1024x1024", type: "image/jpeg" },
+        { src: musicStore.getSongCover("xl") || musicStore.playSong.cover || "", sizes: "1920x1920", type: "image/jpeg" },
       ],
     });
   }

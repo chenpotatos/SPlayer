@@ -63,8 +63,6 @@ export interface SettingState {
   showYrc: boolean;
   /** 显示逐字歌词动画 */
   showYrcAnimation: boolean;
-  /** 显示逐字歌词长音发光效果 */
-  showYrcLongEffect: boolean;
   /** 显示歌词翻译 */
   showTran: boolean;
   /** 显示歌词音译 */
@@ -169,6 +167,8 @@ export interface SettingState {
   hidePassedLines: boolean;
   /** 文字动画的渐变宽度 */
   wordFadeWidth: number;
+  /** 歌词时延调节步长（毫秒） */
+  lyricOffsetStep: number;
   /** 是否启用在线 TTML 歌词 */
   enableTTMLLyric: boolean;
   /** AMLL DB 服务地址 */
@@ -189,6 +189,8 @@ export interface SettingState {
   showLocalCover: boolean;
   /** 路由动画 */
   routeAnimation: "none" | "fade" | "zoom" | "slide" | "up";
+  /** 播放器展开动画 */
+  playerExpandAnimation: "up" | "smooth";
   /** 是否使用真实 IP */
   useRealIP: boolean;
   /** 真实 IP 地址 */
@@ -290,6 +292,7 @@ export const useSettingStore = defineStore("setting", {
     menuShowCover: true,
     menuExpandedKeys: [],
     routeAnimation: "slide",
+    playerExpandAnimation: "up",
     useOnlineService: true,
     showCloseAppTip: true,
     closeAppMethod: "hide",
@@ -334,11 +337,11 @@ export const useSettingStore = defineStore("setting", {
     useAMSpring: false,
     hidePassedLines: false,
     wordFadeWidth: 0.5,
+    lyricOffsetStep: 500,
     enableTTMLLyric: false,
     amllDbServer: defaultAMLLDbServer,
     showYrc: true,
     showYrcAnimation: true,
-    showYrcLongEffect: true,
     showTran: true,
     showRoma: true,
     lyricsPosition: "flex-start",
@@ -372,7 +375,7 @@ export const useSettingStore = defineStore("setting", {
     proxyPort: 80,
     useRealIP: false,
     realIP: "",
-    showPlayMeta: false,
+    showPlayMeta: true,
     showSongQuality: true,
     showSongPrivilegeTag: true,
     showSongOriginalTag: true,

@@ -30,7 +30,10 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win --config electron-builder.config.ts",
     "build:mac": "npm run build && electron-builder --mac --config electron-builder.config.ts",
-    "build:linux": "npm run build && electron-builder --linux --config electron-builder.config.ts"
+    "build:linux": "npm run build && electron-builder --linux --config electron-builder.config.ts",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "@applemusic-like-lyrics/core": "^0.2.0",
@@ -48,7 +51,6 @@
     "@pixi/filter-bulge-pinch": "^5.1.1",
     "@pixi/filter-color-matrix": "^7.4.3",
     "@pixi/sprite": "^7.4.3",
-    "@tanstack/vue-virtual": "^3.13.13",
     "@vueuse/core": "^13.9.0",
     "@vueuse/integrations": "^14.1.0",
     "axios": "^1.13.2",
@@ -76,7 +78,8 @@
     "pinia": "^3.0.4",
     "pinia-plugin-persistedstate": "^4.7.1",
     "plyr": "^3.8.3",
-    "sortablejs": "^1.15.6"
+    "sortablejs": "^1.15.6",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -90,6 +93,7 @@
     "@types/js-cookie": "^3.0.6",
     "@types/md5": "^2.3.6",
     "@types/node": "^24.10.1",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.48.1",
     "@typescript-eslint/parser": "^8.48.1",
     "@vitejs/plugin-vue": "^6.0.2",
@@ -115,6 +119,7 @@
     "vite-plugin-compression": "^0.5.1",
     "vite-plugin-vue-devtools": "^8.0.5",
     "vite-plugin-wasm": "^3.5.0",
+    "vitepress": "2.0.0-alpha.15",
     "vue": "^3.5.25",
     "vue-router": "^4.6.3",
     "vue-tsc": "2.2.12"

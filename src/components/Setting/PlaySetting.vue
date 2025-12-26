@@ -111,7 +111,7 @@
         />
       </n-card>
     </div>
-    <div v-if="isElectron&& statusStore.isDeveloperMode" class="set-list">
+    <div v-if="isElectron && statusStore.isDeveloperMode" class="set-list">
       <n-h3 prefix="bar">
         音乐解锁
         <n-tag type="warning" size="small" round>Beta</n-tag>
@@ -142,6 +142,26 @@
     </div>
     <div class="set-list">
       <n-h3 prefix="bar"> 播放器 </n-h3>
+      <n-card class="set-item">
+        <div class="label">
+          <n-text class="name">播放器展开动画</n-text>
+          <n-text class="tip" :depth="3">选择播放器展开时的动画效果</n-text>
+        </div>
+        <n-select
+          v-model:value="settingStore.playerExpandAnimation"
+          :options="[
+            {
+              label: '上浮',
+              value: 'up',
+            },
+            {
+              label: '平滑',
+              value: 'smooth',
+            },
+          ]"
+          class="set"
+        />
+      </n-card>
       <n-card class="set-item">
         <div class="label">
           <n-text class="name">播放器样式</n-text>

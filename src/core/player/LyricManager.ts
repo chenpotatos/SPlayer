@@ -3,7 +3,7 @@ import { songLyric, songLyricTTML } from "@/api/song";
 import { type SongLyric } from "@/types/lyric";
 import { type LyricLine, parseLrc, parseTTML, parseYrc } from "@applemusic-like-lyrics/lyric";
 import { isElectron } from "@/utils/env";
-import { isEmpty } from "lodash-es";
+import { isEmpty, max } from "lodash-es";
 import { useCacheManager } from "@/core/resource/CacheManager";
 
 class LyricManager {
@@ -101,13 +101,14 @@ class LyricManager {
 
   /**
    * 对齐本地歌词
-   * @param lyrics 本地歌词数据
-   * @param otherLyrics 其他歌词数据
+   * @param lyricData 本地歌词数据
    * @returns 对齐后的本地歌词数据
    */
   private alignLocalLyrics(lyricData: SongLyric): SongLyric {
     // 同一时间的两/三行分别作为主句、翻译、音译
     const toTime = (line: LyricLine) => Number(line?.startTime ?? line?.words?.[0]?.startTime ?? 0);
+    // 获取结束时间
+    const toEndTime = (line: LyricLine) => Number(line?.endTime ?? line?.words?.[line?.words?.length - 1]?.endTime ?? 0);
     // 取内容
     const toText = (line: LyricLine) => String(line?.words?.[0]?.word || "").trim();
     const lrc = lyricData.lrcData || [];
@@ -124,10 +125,16 @@ class LyricManager {
     // 组装：第 1 行主句；第 2 行翻译；第 3 行音译；不调整时长
     const aligned = groups.map((group) => {
       const base = { ...group[0] } as LyricLine;
-      const tran = group[1] ? toText(group[1]) : "";
-      const roma = group[2] ? toText(group[2]) : "";
-      if (!base.translatedLyric) base.translatedLyric = tran;
-      if (!base.romanLyric) base.romanLyric = roma;
+      const tran = group[1];
+      const roma = group[2];
+      if (!base.translatedLyric && tran) {
+        base.translatedLyric = toText(tran);
+        base.endTime = max([toEndTime(base), toEndTime(tran)]);
+      }
+      if (!base.romanLyric && roma) {
+        base.romanLyric = toText(roma);
+        base.endTime = max([toEndTime(base), toEndTime(roma)]);
+      }
       return base;
     });
     return { lrcData: aligned, yrcData: lyricData.yrcData };
@@ -351,6 +358,42 @@ class LyricManager {
   }
 
   /**
+   * 比较歌词数据是否相同
+   * @param oldData 旧歌词数据
+   * @param newData 新歌词数据
+   * @returns 是否相同
+   */
+  private isLyricDataEqual(oldData: SongLyric, newData: SongLyric): boolean {
+    // 比较数组长度
+    if (
+      oldData.lrcData?.length !== newData.lrcData?.length ||
+      oldData.yrcData?.length !== newData.yrcData?.length
+    ) {
+      return false;
+    }
+    // 比较 lrcData 内容（比较每行的 startTime 和文本内容）
+    const compareLines = (oldLines: LyricLine[], newLines: LyricLine[]): boolean => {
+      if (oldLines.length !== newLines.length) return false;
+      for (let i = 0; i < oldLines.length; i++) {
+        const oldLine = oldLines[i];
+        const newLine = newLines[i];
+        const oldText = oldLine.words?.map((w) => w.word).join("") || "";
+        const newText = newLine.words?.map((w) => w.word).join("") || "";
+        if (oldLine.startTime !== newLine.startTime || oldText !== newText) {
+          return false;
+        }
+        // ttml 特有属性
+        if (newLine.isBG !== oldLine.isBG) return false;
+      }
+      return true;
+    };
+    return (
+      compareLines(oldData.lrcData || [], newData.lrcData || []) &&
+      compareLines(oldData.yrcData || [], newData.yrcData || [])
+    );
+  }
+
+  /**
    * 设置最终歌词
    * @param lyricData 歌词数据
    * @param req 当前歌词请求
@@ -374,6 +417,12 @@ class LyricManager {
           },
         ],
       }));
+    }
+    // 比较新旧歌词数据，如果相同则跳过设置，避免重复重载
+    if (this.isLyricDataEqual(musicStore.songLyric, lyricData)) {
+      // 仅更新加载状态，不更新歌词数据
+      statusStore.lyricLoading = false;
+      return;
     }
     // 设置歌词
     musicStore.setSongLyric(lyricData, true);

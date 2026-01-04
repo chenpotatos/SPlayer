@@ -111,7 +111,7 @@
         />
       </n-card>
     </div>
-    <div v-if="isElectron && statusStore.isDeveloperMode" class="set-list">
+    <div v-if="isElectron" class="set-list">
       <n-h3 prefix="bar">
         音乐解锁
         <n-tag type="warning" size="small" round>Beta</n-tag>
@@ -235,6 +235,13 @@
             placeholder="请输入背景动画流动速度"
           />
         </n-card>
+        <n-card class="set-item">
+          <div class="label">
+            <n-text class="name">背景动画暂停时暂停</n-text>
+            <n-text class="tip" :depth="3">在暂停时是否也暂停背景动画</n-text>
+          </div>
+          <n-switch v-model:value="settingStore.playerBackgroundPause" class="set" :round="false" />
+        </n-card>
       </n-collapse-transition>
       <n-card class="set-item">
         <div class="label">
@@ -252,13 +259,6 @@
       </n-card>
       <n-card class="set-item">
         <div class="label">
-          <n-text class="name">底栏歌词显示</n-text>
-          <n-text class="tip" :depth="3">在播放时将歌手信息更改为歌词</n-text>
-        </div>
-        <n-switch v-model:value="settingStore.barLyricShow" class="set" :round="false" />
-      </n-card>
-      <n-card class="set-item">
-        <div class="label">
           <n-text class="name">播放器元素自动隐藏</n-text>
           <n-text class="tip" :depth="3">鼠标静止一段时间或者离开播放器时自动隐藏控制元素</n-text>
         </div>
@@ -270,12 +270,6 @@
           <n-text class="tip" :depth="3">展示当前歌曲及歌词的状态信息</n-text>
         </div>
         <n-switch v-model:value="settingStore.showPlayMeta" class="set" :round="false" />
-      </n-card>
-      <n-card class="set-item">
-        <div class="label">
-          <n-text class="name">播放列表歌曲数量</n-text>
-        </div>
-        <n-switch v-model:value="settingStore.showPlaylistCount" class="set" :round="false" />
       </n-card>
       <n-card class="set-item">
         <div class="label">
@@ -305,13 +299,33 @@
       </n-card>
     </div>
     <div class="set-list">
-      <n-h3 prefix="bar"> 系统集成 </n-h3>
+      <n-h3 prefix="bar"> 全局播放器 </n-h3>
       <n-card class="set-item">
         <div class="label">
-          <n-text class="name">开启 SMTC</n-text>
-          <n-text class="tip" :depth="3">与系统集成以显示媒体元数据</n-text>
+          <n-text class="name">时间显示格式</n-text>
+          <n-text class="tip" :depth="3">
+            底栏右侧和播放页面底部的时间如何显示（单击时间可以快速切换）
+          </n-text>
         </div>
-        <n-switch v-model:value="settingStore.smtcOpen" class="set" :round="false" />
+        <n-select
+          v-model:value="settingStore.timeFormat"
+          :options="timeFormatOptions"
+          class="set"
+        />
+      </n-card>
+      <n-card class="set-item">
+        <div class="label">
+          <n-text class="name">播放列表歌曲数量</n-text>
+          <n-text class="tip" :depth="3"> 在右下角的播放列表按钮处显示播放列表的歌曲数量 </n-text>
+        </div>
+        <n-switch v-model:value="settingStore.showPlaylistCount" class="set" :round="false" />
+      </n-card>
+      <n-card class="set-item">
+        <div class="label">
+          <n-text class="name">底栏歌词显示</n-text>
+          <n-text class="tip" :depth="3">在播放时将歌手信息更改为歌词</n-text>
+        </div>
+        <n-switch v-model:value="settingStore.barLyricShow" class="set" :round="false" />
       </n-card>
     </div>
   </div>
@@ -323,7 +337,7 @@ import { useSettingStore, useStatusStore } from "@/stores";
 import { isLogin } from "@/utils/auth";
 import { renderOption } from "@/utils/helper";
 import { isElectron } from "@/utils/env";
-import { uniqBy } from "lodash";
+import { uniqBy } from "lodash-es";
 import { usePlayerController } from "@/core/player/PlayerController";
 import { openSongUnlockManager } from "@/utils/modal";
 
@@ -389,6 +403,21 @@ const songLevelData = {
     value: "dolby",
   },
 };
+
+const timeFormatOptions = [
+  {
+    label: "播放时间 / 总时长",
+    value: "current-total",
+  },
+  {
+    label: "剩余时间 / 总时长",
+    value: "remaining-total",
+  },
+  {
+    label: "播放时间 / 剩余时间",
+    value: "current-remaining",
+  },
+];
 
 // 获取全部输出设备
 const getOutputDevices = async () => {

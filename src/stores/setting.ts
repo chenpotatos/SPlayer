@@ -75,6 +75,8 @@ export interface SettingState {
   downloadPath: string;
   /** 是否启用缓存 */
   cacheEnabled: boolean;
+  /** 是否缓存歌曲（音频文件） */
+  songCacheEnabled: boolean;
   /** 音乐命名格式 */
   fileNameFormat: "title" | "artist-title" | "title-artist";
   /** 文件智能分类 */
@@ -140,7 +142,9 @@ export interface SettingState {
   /** 背景动画流动速度 */
   playerBackgroundFlowSpeed: number;
   /** 背景动画是否在歌曲暂停时暂停 */
-  playerBackgroundPause: boolean
+  playerBackgroundPause: boolean;
+  /** 背景动画是否响应低频音量 */
+  playerBackgroundLowFreqVolume: boolean;
   /** 播放器元素自动隐藏 */
   autoHidePlayerMeta: boolean;
   /** 记忆最后进度 */
@@ -175,8 +179,12 @@ export interface SettingState {
   wordFadeWidth: number;
   /** 歌词时延调节步长（毫秒） */
   lyricOffsetStep: number;
-  /** 是否启用在线 TTML 歌词 */
+  /** 启用在线 TTML 歌词 */
   enableOnlineTTMLLyric: boolean;
+  /** 优先使用 QQ 音乐歌词源 */
+  preferQQMusicLyric: boolean;
+  /** 本地歌曲使用 QQ 音乐歌词匹配 */
+  localLyricQQMusicMatch: boolean;
   /** AMLL DB 服务地址 */
   amllDbServer: string;
   /** 菜单显示封面 */
@@ -345,6 +353,7 @@ export const useSettingStore = defineStore("setting", {
     playerBackgroundFps: 30,
     playerBackgroundFlowSpeed: 4,
     playerBackgroundPause: false,
+    playerBackgroundLowFreqVolume: false,
     autoHidePlayerMeta: true,
     memoryLastSeek: true,
     progressTooltipShow: true,
@@ -366,6 +375,8 @@ export const useSettingStore = defineStore("setting", {
     wordFadeWidth: 0.5,
     lyricOffsetStep: 500,
     enableOnlineTTMLLyric: false,
+    preferQQMusicLyric: false,
+    localLyricQQMusicMatch: false,
     amllDbServer: defaultAMLLDbServer,
     showYrc: true,
     showYrcAnimation: true,
@@ -388,6 +399,7 @@ export const useSettingStore = defineStore("setting", {
     showLocalCover: true,
     downloadPath: "",
     cacheEnabled: true,
+    songCacheEnabled: true,
     fileNameFormat: "title-artist",
     folderStrategy: "none",
     downloadMeta: true,

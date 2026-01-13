@@ -1,9 +1,9 @@
-import { defineStore } from "pinia";
+import { TimeFormat } from "@/composables/useTimeFormat";
 import { SongUnlockServer } from "@/core/player/SongManager";
 import type { SongLevelType } from "@/types/main";
 import { defaultAMLLDbServer } from "@/utils/meta";
+import { defineStore } from "pinia";
 import { CURRENT_SETTING_SCHEMA_VERSION, settingMigrations } from "./migrations/settingMigrations";
-import { TimeFormat } from "@/composables/useTimeFormat";
 
 export interface SettingState {
   /** Schema 版本号（可选，用于数据迁移） */
@@ -57,8 +57,8 @@ export interface SettingState {
   lyricTranFontSize: number;
   /** 歌词音译字体大小 */
   lyricRomaFontSize: number;
-  /** 歌词字体加粗 */
-  lyricFontBold: boolean;
+  /** 歌词字重设置 */
+  lyricFontWeight: number;
   /** 显示逐字歌词 */
   showYrc: boolean;
   /** 显示逐字歌词动画 */
@@ -67,6 +67,8 @@ export interface SettingState {
   showTran: boolean;
   /** 显示歌词音译 */
   showRoma: boolean;
+  /** 显示逐字音译 */
+  showWordsRoma: boolean;
   /** 歌词位置 */
   lyricsPosition: "flex-start" | "center" | "flex-end";
   /** 歌词滚动位置 */
@@ -115,6 +117,8 @@ export interface SettingState {
     | "jymaster";
   /** 播放设备 */
   playDevice: "default" | string;
+  /** 音频引擎: element (原生) 或 ffmpeg */
+  audioEngine: "element" | "ffmpeg";
   /** 自动播放 */
   autoPlay: boolean;
   /** 预载下一首 */
@@ -145,6 +149,8 @@ export interface SettingState {
   playerBackgroundPause: boolean;
   /** 背景动画是否响应低频音量 */
   playerBackgroundLowFreqVolume: boolean;
+  /** 背景动画渲染比例 */
+  playerBackgroundRenderScale: number;
   /** 播放器元素自动隐藏 */
   autoHidePlayerMeta: boolean;
   /** 记忆最后进度 */
@@ -157,10 +163,8 @@ export interface SettingState {
   showPlaylistCount: boolean;
   /** 是否显示音乐频谱 */
   showSpectrums: boolean;
-  /** 是否开启 SMTC */
+  /** 是否开启系统音频集成 */
   smtcOpen: boolean;
-  /** 是否开启原生 SMTC 支持 (Windows) */
-  enableNativeSmtc: boolean;
   /** 歌词模糊 */
   lyricsBlur: boolean;
   /** 鼠标悬停暂停 */
@@ -304,6 +308,12 @@ export interface SettingState {
     /** 显示模式 */
     displayMode: "name" | "state" | "details";
   };
+  /** 播放引擎 */
+  playbackEngine: "web-audio" | "mpv";
+  /** 自定义 CSS */
+  customCss: string;
+  /** 自定义 JS */
+  customJs: string;
 }
 
 export const useSettingStore = defineStore("setting", {
@@ -334,6 +344,7 @@ export const useSettingStore = defineStore("setting", {
     useKeepAlive: true,
     songLevel: "exhigh",
     playDevice: "default",
+    audioEngine: "element",
     autoPlay: false,
     useNextPrefetch: true,
     songVolumeFade: true,
@@ -354,6 +365,7 @@ export const useSettingStore = defineStore("setting", {
     playerBackgroundFlowSpeed: 4,
     playerBackgroundPause: false,
     playerBackgroundLowFreqVolume: false,
+    playerBackgroundRenderScale: 0.5,
     autoHidePlayerMeta: true,
     memoryLastSeek: true,
     progressTooltipShow: true,
@@ -361,14 +373,13 @@ export const useSettingStore = defineStore("setting", {
     showPlaylistCount: true,
     showSpectrums: false,
     smtcOpen: true,
-    enableNativeSmtc: true,
     playSongDemo: false,
     scrobbleSong: false,
     dynamicCover: false,
     lyricFontSize: 46,
     lyricTranFontSize: 22,
     lyricRomaFontSize: 18,
-    lyricFontBold: true,
+    lyricFontWeight: 700,
     useAMLyrics: false,
     useAMSpring: false,
     hidePassedLines: false,
@@ -382,6 +393,7 @@ export const useSettingStore = defineStore("setting", {
     showYrcAnimation: true,
     showTran: true,
     showRoma: true,
+    showWordsRoma: true,
     lyricsPosition: "flex-start",
     lyricsBlur: false,
     lyricsScrollPosition: "start",
@@ -463,6 +475,9 @@ export const useSettingStore = defineStore("setting", {
       showWhenPaused: true,
       displayMode: "name",
     },
+    playbackEngine: "web-audio",
+    customCss: "",
+    customJs: "",
   }),
   getters: {
     /**

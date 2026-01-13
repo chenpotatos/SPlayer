@@ -3,7 +3,10 @@
     <Transition name="fade" mode="out-in">
       <!-- 背景色 -->
       <div
-        v-if="settingStore.playerBackgroundType === 'color'"
+        v-if="
+          settingStore.playerBackgroundType === 'color' ||
+          (delayAnimation && settingStore.playerBackgroundType === 'animation')
+        "
         :key="musicStore.songCover"
         class="color"
       />
@@ -17,12 +20,13 @@
       />
       <!-- 流体效果 -->
       <BackgroundRender
-        v-else-if="settingStore.playerBackgroundType === 'animation'"
+        v-else-if="settingStore.playerBackgroundType === 'animation' && !props.delayAnimation"
         :album="musicStore.songCover"
         :fps="settingStore.playerBackgroundFps ?? 60"
         :flowSpeed="flowSpeed"
         :hasLyric="musicStore.isHasLrc"
         :lowFreqVolume="lowFreqVolume"
+        :renderScale="settingStore.playerBackgroundRenderScale ?? 0.5"
       />
     </Transition>
   </div>
@@ -31,7 +35,11 @@
 <script setup lang="ts">
 import { useMusicStore, useSettingStore, useStatusStore } from "@/stores";
 import { usePlayerController } from "@/core/player/PlayerController";
-import BackgroundRender from "../Special/BackgroundRender.vue";
+
+const props = defineProps<{
+  /** 是否延迟加载动画背景 */
+  delayAnimation?: boolean;
+}>();
 
 const musicStore = useMusicStore();
 const settingStore = useSettingStore();
@@ -46,7 +54,7 @@ const flowSpeed = computed(() => {
   else return settingStore.playerBackgroundFlowSpeed ?? 4;
 });
 
-// 使用 useRafFn 周期性更新低频音量
+// 更新低频音量
 const { pause: pauseRaf, resume: resumeRaf } = useRafFn(
   () => {
     if (
@@ -55,14 +63,12 @@ const { pause: pauseRaf, resume: resumeRaf } = useRafFn(
       statusStore.playStatus
     ) {
       lowFreqVolume.value = player.getLowFrequencyVolume();
-    } else {
-      lowFreqVolume.value = 1.0;
     }
   },
   { immediate: false },
 );
 
-// 根据条件启动或暂停 RAF
+// 启动或暂停 RAF
 watch(
   () => [
     settingStore.playerBackgroundLowFreqVolume,
@@ -70,8 +76,8 @@ watch(
     statusStore.playStatus,
   ],
   ([enabled, bgType, playing]) => {
-    if (enabled && bgType === "animation" && playing) {
-      resumeRaf();
+    if (enabled && bgType === "animation") {
+      playing ? resumeRaf() : pauseRaf();
     } else {
       pauseRaf();
       lowFreqVolume.value = 1.0;

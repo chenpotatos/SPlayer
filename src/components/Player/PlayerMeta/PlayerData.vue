@@ -43,7 +43,9 @@
         <n-popselect
           :value="currentPlayingLevel"
           :options="qualityOptions"
-          :disabled="!!musicStore.playSong.path || statusStore.playUblock || !!musicStore.playSong.pc"
+          :disabled="
+            !!musicStore.playSong.path || statusStore.playUblock || !!musicStore.playSong.pc
+          "
           class="player"
           trigger="click"
           placement="top"
@@ -71,7 +73,13 @@
         <span class="meta-item">{{ lyricMode }}</span>
         <!-- 是否在线 -->
         <span class="meta-item">
-          {{ musicStore.playSong.path ? "LOCAL" : "ONLINE" }}
+          {{
+            musicStore.playSong.path
+              ? "LOCAL"
+              : musicStore.playSong.type === "streaming"
+                ? "STREAMING"
+                : "ONLINE"
+          }}
         </span>
       </n-flex>
       <!-- 歌手 -->
@@ -338,8 +346,6 @@ const jumpPage = debounce(
     .name-text {
       font-size: 26px;
       font-weight: bold;
-      line-clamp: 2;
-      -webkit-line-clamp: 2;
     }
     .n-icon {
       margin-left: 12px;
@@ -444,6 +450,9 @@ const jumpPage = debounce(
         align-items: center;
         justify-content: center;
       }
+    }
+    @media (max-width: 990px) {
+      padding: 0 2px;
     }
   }
   &.center {

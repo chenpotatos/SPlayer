@@ -37,6 +37,8 @@ export type AudioSource = {
   isTrial?: boolean;
   /** 音质 */
   quality?: QualityType;
+  /** 音源 */
+  source?: string;
 };
 
 class SongManager {
@@ -172,7 +174,7 @@ class SongManager {
     // 优先检查本地缓存
     const cachedUrl = await this.checkLocalCache(songId);
     if (cachedUrl) {
-      return { id: songId, url: cachedUrl };
+      return { id: songId, url: cachedUrl, isUnlocked: true };
     }
     const artist = Array.isArray(song.artists) ? song.artists[0].name : song.artists;
     const keyWord = song.name + "-" + artist;
@@ -206,13 +208,15 @@ class SongManager {
         // 推断音质
         let quality = QualityType.HQ;
         if (unlockUrl && (unlockUrl.includes(".flac") || unlockUrl.includes(".wav"))) {
-            quality = QualityType.SQ;
+          quality = QualityType.SQ;
         }
+        console.log(`最终音质判断：详细输出：`, { unlockUrl, quality });
         return {
           id: songId,
           url: unlockUrl,
           isUnlocked: true,
           quality,
+          source: r.value.server,
         };
       }
     }
@@ -358,20 +362,20 @@ class SongManager {
       // 如果官方链接有效且非试听（或者用户接受试听）
       if (officialUrl && (!isTrial || (isTrial && settingStore.playSongDemo))) {
         if (isTrial) window.$message.warning("当前歌曲仅可试听");
-        return { id: songId, url: officialUrl, quality, isUnlocked: false };
+        return { id: songId, url: officialUrl, quality, isUnlocked: false, source: "netease" };
       }
       // 尝试解锁
       if (canUnlock) {
         const unlockUrl = await this.getUnlockSongUrl(song);
         if (unlockUrl.url) {
-          console.log(`🔓 [${songId}] 解锁成功`);
+          console.log(`🔓 [${songId}] 解锁成功`, unlockUrl);
           return unlockUrl;
         }
       }
       // 最后的兜底：检查本地是否有缓存（不区分音质）
       const fallbackUrl = await this.checkLocalCache(songId);
       if (fallbackUrl) {
-        console.log(`🚀 [${songId}] 网络请求失败，使用本地缓存兜底`);
+        console.log(`🚀 [${songId}] 网络请求失败，使用本地缓存兜底`, fallbackUrl);
         return { id: songId, url: fallbackUrl, isUnlocked: true };
       }
       // 无可用源

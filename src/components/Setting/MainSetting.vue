@@ -38,16 +38,19 @@
             {{ packageJson.author }}
           </n-text>
           <n-text class="name">SPlayer</n-text>
+          <n-tag v-if="isNightly" class="version" size="small" type="primary" round>
+            Nightly · {{ displayVersion }}
+          </n-tag>
           <n-tag
-            v-if="statusStore.isDeveloperMode"
+            v-else-if="statusStore.isDeveloperMode"
             class="version"
             size="small"
             type="warning"
             round
           >
-            DEV · v{{ packageJson.version }}
+            DEV · {{ displayVersion }}
           </n-tag>
-          <n-text v-else class="version" depth="3">v{{ packageJson.version }}</n-text>
+          <n-text v-else class="version" depth="3">{{ displayVersion }}</n-text>
         </div>
       </div>
     </Transition>
@@ -64,13 +67,24 @@
       <n-scrollbar
         ref="setScrollbar"
         class="set-content"
-        :content-style="{ overflow: 'hidden', padding: '40px 0' }"
+        :content-style="{ overflow: 'hidden', padding: '40px 10px' }"
       >
-        <Transition name="fade" mode="out-in" @after-leave="setScrollbar?.scrollTo({ top: 0 })">
+        <Transition
+          name="fade"
+          mode="out-in"
+          :duration="70"
+          @after-leave="setScrollbar?.scrollTo({ top: 0 })"
+        >
           <!-- 常规 -->
           <UniversalSetting
             v-if="activeKey === 'general'"
             :groups="generalConfig.groups"
+            :highlight-key="highlightKey"
+          />
+          <!-- 外观 -->
+          <UniversalSetting
+            v-else-if="activeKey === 'appearance'"
+            :groups="appearanceConfig.groups"
             :highlight-key="highlightKey"
           />
           <!-- 播放 -->
@@ -97,22 +111,10 @@
             :groups="localConfig.groups"
             :highlight-key="highlightKey"
           />
-          <!-- 第三方 -->
+          <!-- 网络 -->
           <UniversalSetting
-            v-else-if="activeKey === 'third'"
-            :groups="thirdConfig.groups"
-            :highlight-key="highlightKey"
-          />
-          <!-- 流媒体 -->
-          <UniversalSetting
-            v-else-if="activeKey === 'streaming'"
-            :groups="streamingConfig.groups"
-            :highlight-key="highlightKey"
-          />
-          <!-- 其他 -->
-          <UniversalSetting
-            v-else-if="activeKey === 'other'"
-            :groups="otherConfig.groups"
+            v-else-if="activeKey === 'network'"
+            :groups="networkConfig.groups"
             :highlight-key="highlightKey"
           />
           <!-- 关于 -->
@@ -133,54 +135,52 @@ import { useMobile } from "@/composables/useMobile";
 import { renderIcon } from "@/utils/helper";
 import { isElectron } from "@/utils/env";
 import { useStatusStore } from "@/stores";
+import { getDisplayVersion, isNightly } from "@/utils/version";
 import packageJson from "@/../package.json";
 import { usePlaySettings } from "./config/play";
 import { useGeneralSettings } from "./config/general";
+import { useAppearanceSettings } from "./config/appearance";
 import { useLyricSettings } from "./config/lyric";
 import { useKeyboardSettings } from "./config/keyboard";
 import { useLocalSettings } from "./config/local";
-import { useThirdSettings } from "./config/third";
-import { useStreamingSettings } from "./config/streaming";
-import { useOtherSettings } from "./config/other";
+import { useNetworkSettings } from "./config/network";
 
 const props = defineProps<{ type: SettingType; scrollTo?: string }>();
 
 const playConfig = usePlaySettings();
 const generalConfig = useGeneralSettings();
+const appearanceConfig = useAppearanceSettings();
 const lyricConfig = useLyricSettings();
 const keyboardConfig = useKeyboardSettings();
 const localConfig = useLocalSettings();
-const thirdConfig = useThirdSettings();
-const streamingConfig = useStreamingSettings();
-const otherConfig = useOtherSettings();
+const networkConfig = useNetworkSettings();
 
 // 配置映射表
 const configs: Record<string, any> = {
   play: playConfig,
   general: generalConfig,
+  appearance: appearanceConfig,
   lyrics: lyricConfig,
   keyboard: keyboardConfig,
   local: localConfig,
-  third: thirdConfig,
-  streaming: streamingConfig,
-  other: otherConfig,
+  network: networkConfig,
 };
 
 // 聚合所有设置
 const allSettingGroups = computed(() => {
   return [
     { key: "general", groups: generalConfig.groups },
+    { key: "appearance", groups: appearanceConfig.groups },
     { key: "play", groups: playConfig.groups },
     { key: "lyrics", groups: lyricConfig.groups },
     { key: "keyboard", groups: keyboardConfig.groups },
     { key: "local", groups: localConfig.groups },
-    { key: "third", groups: thirdConfig.groups },
-    { key: "streaming", groups: streamingConfig.groups },
-    { key: "other", groups: otherConfig.groups },
+    { key: "network", groups: networkConfig.groups },
   ];
 });
 
 const statusStore = useStatusStore();
+const displayVersion = getDisplayVersion();
 const { isSmallScreen } = useMobile();
 
 // 设置内容
@@ -305,6 +305,11 @@ const menuOptions: MenuOption[] = [
     icon: renderIcon("SettingsLine"),
   },
   {
+    key: "appearance",
+    label: "外观设置",
+    icon: renderIcon("Palette"),
+  },
+  {
     key: "play",
     label: "播放设置",
     icon: renderIcon("Music"),
@@ -315,35 +320,25 @@ const menuOptions: MenuOption[] = [
     icon: renderIcon("Lyrics"),
   },
   {
-    key: "keyboard",
-    label: "快捷键设置",
-    show: isElectron,
-    icon: renderIcon("Keyboard"),
-  },
-  {
     key: "local",
     label: "本地与缓存",
     show: isElectron,
     icon: renderIcon("Storage"),
   },
   {
-    key: "third",
-    label: "连接与集成",
-    icon: renderIcon("Extension"),
+    key: "keyboard",
+    label: "快捷键设置",
+    show: isElectron,
+    icon: renderIcon("Keyboard"),
   },
   {
-    key: "streaming",
-    label: "流媒体设置",
-    icon: renderIcon("Stream"),
-  },
-  {
-    key: "other",
-    label: "其他设置",
-    icon: renderIcon("SettingsOther"),
+    key: "network",
+    label: "网络与连接",
+    icon: renderIcon("Link"),
   },
   {
     key: "about",
-    label: "关于",
+    label: "关于与鸣谢",
     icon: renderIcon("Info"),
   },
 ];
@@ -481,7 +476,7 @@ onMounted(() => {
       transition: opacity 0.2s ease-in-out;
     }
     .set-content {
-      padding: 0 40px;
+      padding: 0 30px;
     }
     .set-list {
       padding-top: 30px;
@@ -522,6 +517,9 @@ onMounted(() => {
         padding-right: 20px;
         .name {
           font-size: 16px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
         }
       }
       .n-flex {

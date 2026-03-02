@@ -299,7 +299,7 @@ export const useLocalSettings = (): SettingConfig => {
       },
       {
         title: "下载配置",
-        show: statusStore.isDeveloperMode,
+        show: computed(() => statusStore.isDeveloperMode),
         items: [
           {
             key: "downloadPath",
@@ -318,6 +318,17 @@ export const useLocalSettings = (): SettingConfig => {
             },
           },
           {
+            key: "enableDownloadHttp2",
+            label: "启用 HTTP/2 下载",
+            type: "switch",
+            tags: [{ text: "Beta", type: "warning" }],
+            description: "使用 HTTP/2 协议进行下载",
+            value: computed({
+              get: () => settingStore.enableDownloadHttp2,
+              set: (v) => (settingStore.enableDownloadHttp2 = v),
+            }),
+          },
+          {
             key: "downloadSongLevel",
             label: "默认下载音质",
             type: "select",
@@ -326,6 +337,19 @@ export const useLocalSettings = (): SettingConfig => {
             value: computed({
               get: () => settingStore.downloadSongLevel,
               set: (v) => (settingStore.downloadSongLevel = v),
+            }),
+          },
+          {
+            key: "downloadThreadCount",
+            label: "下载线程数",
+            type: "slider",
+            description: "多线程下载可提高速度，默认为 8，建议设置在 4-16 之间",
+            min: 1,
+            max: 32,
+            step: 1,
+            value: computed({
+              get: () => settingStore.downloadThreadCount,
+              set: (v) => (settingStore.downloadThreadCount = v),
             }),
           },
           {
@@ -431,11 +455,22 @@ export const useLocalSettings = (): SettingConfig => {
             label: "下载时另存逐字歌词文件",
             type: "switch",
             tags: [{ text: "Beta", type: "warning" }],
-            description: "在有条件时保存独立的 YRC/TTML 逐字歌词文件（源文件仍内嵌LRC）",
+            description: "在有条件时保存独立的 YRC/TTML 逐字歌词文件（源文件仍内嵌 LRC）",
             disabled: computed(() => !settingStore.downloadMeta || !settingStore.downloadLyric),
             value: computed({
               get: () => settingStore.downloadMakeYrc,
               set: (v) => (settingStore.downloadMakeYrc = v),
+            }),
+          },
+          {
+            key: "downloadSaveAsAss",
+            label: "下载时另存为 ASS 文件",
+            type: "switch",
+            description: "生成 ASS 字幕文件以支持第三方播放器识别（源文件仍内嵌 LRC）",
+            disabled: computed(() => !settingStore.downloadMeta || !settingStore.downloadLyric),
+            value: computed({
+              get: () => settingStore.downloadSaveAsAss,
+              set: (v) => (settingStore.downloadSaveAsAss = v),
             }),
           },
           {

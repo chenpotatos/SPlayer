@@ -62,13 +62,22 @@
               </div>
             </n-popover>
             <n-text v-else class="title">标题</n-text>
-            <n-text v-if="type !== 'radio' && !hiddenAlbum && !isSmallScreen" class="album">
+            <n-text
+              v-if="
+                type !== 'radio' && !hiddenAlbum && !isSmallScreen && settingStore.showSongAlbum
+              "
+              class="album"
+            >
               专辑
             </n-text>
-            <n-text v-if="type !== 'radio'" class="actions">操作</n-text>
+            <n-text v-if="type !== 'radio' && settingStore.showSongOperations" class="actions">
+              操作
+            </n-text>
             <n-text v-if="type === 'radio' && !isSmallScreen" class="meta date">更新日期</n-text>
             <n-text v-if="type === 'radio' && !isSmallScreen" class="meta">播放量</n-text>
-            <n-text v-if="!isSmallScreen" class="meta">时长</n-text>
+            <n-text v-if="!isSmallScreen && settingStore.showSongDuration" class="meta">
+              时长
+            </n-text>
             <n-text v-if="data?.[0].size && !hiddenSize && !isSmallScreen" class="meta size">
               大小
             </n-text>
@@ -88,7 +97,7 @@
                 v-if="item.type === 'song'"
                 :song="item.data"
                 :index="index"
-                :hiddenCover="hiddenCover || settingStore.hideAllCovers"
+                :hiddenCover="hiddenCover || settingStore.hiddenCovers.list"
                 :hiddenAlbum="hiddenAlbum"
                 :hiddenSize="hiddenSize"
                 @click.stop="handleSongClick(item.data)"
@@ -109,21 +118,25 @@
         </div>
       </Transition>
       <!-- 右键菜单 -->
-      <SongListMenu ref="songListMenuRef" @removeSong="removeSong" />
+      <SongListMenu
+        ref="songListMenuRef"
+        :hiddenCover="hiddenCover || settingStore.hiddenCovers.list"
+        @removeSong="removeSong"
+      />
       <MobileSongMenu ref="mobileSongMenuRef" @removeSong="removeSong" />
       <!-- 列表操作 -->
       <Teleport to="body">
         <Transition name="fade" mode="out-in">
-          <n-float-button-group v-if="floatToolShow" class="list-menu">
-            <Transition name="fade" mode="out-in">
-              <n-float-button v-if="scrollTop > 100" width="42" @click="scrollToTop">
+          <div v-if="floatToolShow" class="list-menu">
+            <n-float-button-group position="relative">
+              <n-float-button v-if="hasPlaySong >= 0" width="42" @click="scrollToCurrentSong">
+                <SvgIcon :size="22" name="Location" />
+              </n-float-button>
+              <n-float-button :class="{ hidden: scrollTop <= 100 }" width="42" @click="scrollToTop">
                 <SvgIcon :size="22" name="Up" />
               </n-float-button>
-            </Transition>
-            <n-float-button v-if="hasPlaySong >= 0" width="42" @click="scrollToCurrentSong">
-              <SvgIcon :size="22" name="Location" />
-            </n-float-button>
-          </n-float-button-group>
+            </n-float-button-group>
+          </div>
         </Transition>
       </Teleport>
     </div>
@@ -266,11 +279,15 @@ const listData = computed<SongType[]>(() => {
   const order = statusStore.listSortOrder;
   const isAsc = order === "asc";
 
+  // 使用 Intl.Collator 进行排序，支持数字敏感排序 (numeric: true)
+  // 这解决了 1.mp3, 10.mp3, 2.mp3 的问题
+  const collator = new Intl.Collator("zh-CN", { numeric: true });
+
   return data.sort((a, b) => {
     let result = 0;
     switch (field) {
       case "title":
-        result = a.name.localeCompare(b.name, "zh-CN");
+        result = collator.compare(a.name || "", b.name || "");
         break;
       case "artist": {
         const artistA = Array.isArray(a.artists)
@@ -279,17 +296,27 @@ const listData = computed<SongType[]>(() => {
         const artistB = Array.isArray(b.artists)
           ? b.artists[0]?.name || ""
           : (b.artists as string) || "";
-        result = artistA.localeCompare(artistB, "zh-CN");
+        result = collator.compare(artistA, artistB);
         break;
       }
       case "album": {
         const albumA = typeof a.album === "string" ? a.album : a.album?.name || "";
         const albumB = typeof b.album === "string" ? b.album : b.album?.name || "";
-        result = albumA.localeCompare(albumB, "zh-CN");
+        result = collator.compare(albumA, albumB);
+        break;
+      }
+      case "trackNumber":
+        // 增加对 undefined/null 的处理，视为 0
+        result = (a.trackNumber || 0) - (b.trackNumber || 0);
+        break;
+      case "filename": {
+        const fileNameA = a.path?.split(/[\\/]/).pop() || "";
+        const fileNameB = b.path?.split(/[\\/]/).pop() || "";
+        result = collator.compare(fileNameA, fileNameB);
         break;
       }
       case "duration":
-        result = a.duration - b.duration;
+        result = (a.duration || 0) - (b.duration || 0);
         break;
       case "size":
         result = (a.size || 0) - (b.size || 0);
@@ -378,9 +405,16 @@ const scrollToTop = () => {
 
 // 滚动到当前播放歌曲
 const scrollToCurrentSong = () => {
-  if (hasPlaySong.value >= 0) {
-    listRef.value?.scrollToIndex(hasPlaySong.value);
-  }
+  if (hasPlaySong.value < 0) return;
+  // 内部滚动
+  listRef.value?.scrollToIndex(hasPlaySong.value);
+  // 自动高度时回退
+  nextTick(() => {
+    const el = listRef.value?.contentRef?.querySelector<HTMLElement>(
+      `[data-index="${hasPlaySong.value}"]`,
+    );
+    if (el) el.scrollIntoView({ block: "center" });
+  });
 };
 
 // 更新列表播放顺序
@@ -587,9 +621,17 @@ onBeforeUnmount(() => {
   position: fixed;
   right: 40px;
   bottom: 120px;
+  z-index: 10;
+  pointer-events: none;
   .n-float-button {
     height: 42px;
     border: 1px solid rgba(var(--primary), 0.28);
+    pointer-events: auto;
+    transition: opacity 0.3s;
+    &.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
   }
 }
 .sort-menu {

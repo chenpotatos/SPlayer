@@ -122,6 +122,12 @@ export interface SettingItem {
   disabled?: MaybeRefOrGetter<boolean>;
 
   /**
+   * 标题
+   * 一般用作鼠标悬停时会显示的提示
+   */
+  title?: MaybeRefOrGetter<string>;
+
+  /**
    * 子项展开条件
    * 仅当存在 `children` 时有效
    * 默认逻辑是当父级 `value === true` 时展开
@@ -227,6 +233,36 @@ export interface SettingItem {
    */
   extraButton?: SettingAction;
 
+  /**
+   * 强制显示条件
+   * 当满足特定条件时，强制禁用该设置项并显示为特定值
+   * 通常用于互斥功能的逻辑处理
+   */
+  forceIf?: {
+    /**
+     * 判断条件
+     * 当返回 true 时，强制生效
+     */
+    condition: MaybeRefOrGetter<boolean>;
+    /**
+     * 强制显示的值
+     * 当条件满足时，显示的值
+     */
+    forcedValue?: MaybeRefOrGetter<any>;
+    /**
+     * 强制显示的标题
+     * 当条件满足时，显示的标题文字
+     * @see SettingItem.title
+     */
+    forcedTitle?: MaybeRefOrGetter<string>;
+    /**
+     * 强制显示的描述
+     * 当条件满足时，显示的描述文字
+     * @see SettingItem.description
+     */
+    forcedDescription?: MaybeRefOrGetter<string> | (() => any);
+  };
+
   // --- 嵌套子项 (Nested Children) ---
 
   /**
@@ -235,7 +271,7 @@ export interface SettingItem {
    * 当满足特定条件（通常是父级开关开启）时，显示子项列表
    * 渲染在一个 `n-collapse-transition` 中
    */
-  children?: SettingItem[];
+  children?: MaybeRefOrGetter<SettingItem[]>;
 }
 
 /**

@@ -1,40 +1,32 @@
+import defaultDesktopLyricConfig from "@/assets/data/lyricConfig";
+import { useLyricManager } from "@/core/player/LyricManager";
 import { usePlayerController } from "@/core/player/PlayerController";
 import { useSettingStore, useStatusStore } from "@/stores";
-import { LyricConfig } from "@/types/desktop-lyric";
-import { isElectron } from "@/utils/env";
-import { openAMLLServer, openFontManager, openLyricExclude } from "@/utils/modal";
+import type { LyricConfig } from "@/types/desktop-lyric";
+import type { SettingConfig } from "@/types/settings";
+import { isElectron, isWin, isMac } from "@/utils/env";
+import { descMultiline } from "@/utils/format";
+import { openAMLLServer, openExcludeLyric, openFontManager } from "@/utils/modal";
 import { cloneDeep, isEqual } from "lodash-es";
-import defaultDesktopLyricConfig from "@/assets/data/lyricConfig";
-import { SettingConfig } from "@/types/settings";
+import { toRef } from "vue";
 import LyricPreview from "../components/LyricPreview.vue";
 
 export const useLyricSettings = (): SettingConfig => {
   const player = usePlayerController();
   const statusStore = useStatusStore();
   const settingStore = useSettingStore();
-
-  const fontSizeComputed = (key: string) =>
-    computed({
-      get: () =>
-        settingStore.useAMLyrics
-          ? Math.max(0.5 * settingStore.lyricFontSize, 10)
-          : settingStore[key],
-      set: (value) => (settingStore[key] = value),
-    });
-
-  const tranFontSize = fontSizeComputed("lyricTranFontSize");
-  const romaFontSize = fontSizeComputed("lyricRomaFontSize");
+  const lyricManager = useLyricManager();
 
   // 桌面歌词配置
   const desktopLyricConfig = reactive<LyricConfig>({ ...defaultDesktopLyricConfig });
 
   const getDesktopLyricConfig = async () => {
     if (!isElectron) return;
-    const config = await window.electron.ipcRenderer.invoke("request-desktop-lyric-option");
+    const config = await window.electron.ipcRenderer.invoke("desktop-lyric:get-option");
     if (config) Object.assign(desktopLyricConfig, config);
 
     // 监听更新
-    window.electron.ipcRenderer.on("update-desktop-lyric-option", (_, config) => {
+    window.electron.ipcRenderer.on("desktop-lyric:update-option", (_, config) => {
       if (config && !isEqual(desktopLyricConfig, config)) {
         Object.assign(desktopLyricConfig, config);
       }
@@ -45,7 +37,7 @@ export const useLyricSettings = (): SettingConfig => {
     try {
       if (!isElectron) return;
       window.electron.ipcRenderer.send(
-        "update-desktop-lyric-option",
+        "desktop-lyric:set-option",
         cloneDeep(desktopLyricConfig),
         true,
       );
@@ -67,7 +59,7 @@ export const useLyricSettings = (): SettingConfig => {
         negativeText: "取消",
         onPositiveClick: () => {
           window.electron.ipcRenderer.send(
-            "update-desktop-lyric-option",
+            "desktop-lyric:set-option",
             defaultDesktopLyricConfig,
             true,
           );
@@ -102,10 +94,24 @@ export const useLyricSettings = (): SettingConfig => {
             component: markRaw(LyricPreview),
           },
           {
+            key: "lyricFontSizeMode",
+            label: "自适应歌词大小",
+            type: "switch",
+            description: "开启后歌词大小将根据窗口高度自动缩放，避免全屏时过小或窗口时过大",
+            value: computed({
+              get: () => settingStore.lyricFontSizeMode === "adaptive",
+              set: (v) => (settingStore.lyricFontSizeMode = v ? "adaptive" : "fixed"),
+            }),
+          },
+          {
             key: "lyricFontSize",
             label: "歌词字体大小",
             type: "input-number",
-            description: "单位 px，最小 12，最大 60",
+            description: computed(() =>
+              settingStore.lyricFontSizeMode === "adaptive"
+                ? "作为基准大小 (以 1080p 高度为准)"
+                : "单位 px，最小 12，最大 60",
+            ),
             min: 12,
             max: 60,
             suffix: "px",
@@ -119,30 +125,46 @@ export const useLyricSettings = (): SettingConfig => {
             key: "lyricTranFontSize",
             label: "翻译歌词大小",
             type: "input-number",
-            description: "单位 px，最小 5，最大 40",
+            description: computed(() =>
+              settingStore.lyricFontSizeMode === "adaptive"
+                ? "作为基准大小 (以 1080p 高度为准)"
+                : "单位 px，最小 5，最大 40",
+            ),
             min: 5,
             max: 40,
             suffix: "px",
-            disabled: computed(() => settingStore.useAMLyrics),
             value: computed({
-              get: () => tranFontSize.value,
-              set: (v) => (tranFontSize.value = v || 22),
+              get: () => settingStore.lyricTranFontSize,
+              set: (v) => (settingStore.lyricTranFontSize = v || 22),
             }),
+            forceIf: {
+              condition: () => settingStore.useAMLyrics,
+              forcedValue: () => Math.max(0.5 * settingStore.lyricFontSize, 10),
+              forcedTitle: "由 AMLL 自动控制",
+            },
             defaultValue: 22,
           },
           {
             key: "lyricRomaFontSize",
             label: "音译歌词大小",
             type: "input-number",
-            description: "单位 px，最小 5，最大 40",
+            description: computed(() =>
+              settingStore.lyricFontSizeMode === "adaptive"
+                ? "作为基准大小 (以 1080p 高度为准)"
+                : "单位 px，最小 5，最大 40",
+            ),
             min: 5,
             max: 40,
             suffix: "px",
-            disabled: computed(() => settingStore.useAMLyrics),
             value: computed({
-              get: () => romaFontSize.value,
-              set: (v) => (romaFontSize.value = v || 18),
+              get: () => settingStore.lyricRomaFontSize,
+              set: (v) => (settingStore.lyricRomaFontSize = v || 18),
             }),
+            forceIf: {
+              condition: () => settingStore.useAMLyrics,
+              forcedValue: () => Math.max(0.5 * settingStore.lyricFontSize, 10),
+              forcedTitle: "由 AMLL 自动控制",
+            },
             defaultValue: 18,
           },
           {
@@ -167,11 +189,24 @@ export const useLyricSettings = (): SettingConfig => {
             }),
           },
           {
+            key: "lyricTransition",
+            label: "歌词切换动画",
+            type: "select",
+            description: "底栏播放器歌词切换时的动画效果",
+            options: [
+              { label: "滑动", value: "slide" },
+              { label: "淡入淡出", value: "fade" },
+            ],
+            value: computed({
+              get: () => settingStore.lyricTransition,
+              set: (v) => (settingStore.lyricTransition = v),
+            }),
+          },
+          {
             key: "lyricsPosition",
             label: "歌词位置",
             type: "select",
             description: "歌词的默认垂直位置",
-            disabled: computed(() => settingStore.useAMLyrics),
             options: [
               { label: "居左", value: "flex-start" },
               { label: "居中", value: "center" },
@@ -181,6 +216,11 @@ export const useLyricSettings = (): SettingConfig => {
               get: () => settingStore.lyricsPosition,
               set: (v) => (settingStore.lyricsPosition = v),
             }),
+            forceIf: {
+              condition: () => settingStore.useAMLyrics,
+              forcedValue: "flex-start",
+              forcedDescription: "歌词的默认垂直位置，AMLL 默认居左",
+            },
           },
           {
             key: "lyricHorizontalOffset",
@@ -208,16 +248,6 @@ export const useLyricSettings = (): SettingConfig => {
             }),
           },
           {
-            key: "hideLyricBrackets",
-            label: "隐藏歌词括号内容",
-            type: "switch",
-            description: "隐藏歌词中括号内的内容，如 (Live)、(伴奏) 等",
-            value: computed({
-              get: () => settingStore.hideLyricBrackets,
-              set: (v) => (settingStore.hideLyricBrackets = v),
-            }),
-          },
-          {
             key: "lyricsScrollOffset",
             label: "歌词滚动位置",
             type: "slider",
@@ -233,30 +263,31 @@ export const useLyricSettings = (): SettingConfig => {
             }),
           },
           {
-            key: "showYrc",
+            key: "showWordLyrics",
             label: "显示逐字歌词",
             type: "switch",
             description: "对性能要求较高，若发生卡顿请关闭",
             value: computed({
-              get: () => settingStore.showYrc,
-              set: (v) => (settingStore.showYrc = v),
+              get: () => settingStore.showWordLyrics,
+              set: (v) => (settingStore.showWordLyrics = v),
             }),
             children: [
               {
-                key: "preferQQMusicLyric",
-                label: "优先使用 QM 歌词",
+                key: "enableQQMusicLyric",
+                label: "启用 QM 歌词",
                 type: "switch",
-                description: "优先从 QM 获取逐字歌词，模糊搜索，可能不准确",
+                description: "启用从 QM 获取逐字歌词，模糊搜索，可能不准确",
                 show: isElectron,
                 value: computed({
-                  get: () => settingStore.preferQQMusicLyric,
-                  set: (v) => (settingStore.preferQQMusicLyric = v),
+                  get: () => settingStore.enableQQMusicLyric,
+                  set: (v) => (settingStore.enableQQMusicLyric = v),
                 }),
               },
               {
                 key: "localLyricQQMusicMatch",
                 label: "本地歌曲使用 QM 歌词",
                 type: "switch",
+                disabled: computed(() => !settingStore.enableQQMusicLyric),
                 description: "为本地歌曲从 QM 匹配逐字歌词，如已有 TTML 歌词则跳过",
                 show: isElectron,
                 value: computed({
@@ -289,11 +320,14 @@ export const useLyricSettings = (): SettingConfig => {
             label: "调换翻译与音译位置",
             type: "switch",
             description: "开启后音译显示在翻译上方",
-            disabled: computed(() => !settingStore.showTran || !settingStore.showRoma),
             value: computed({
               get: () => settingStore.swapTranRoma,
               set: (v) => (settingStore.swapTranRoma = v),
             }),
+            forceIf: {
+              condition: () => !settingStore.showTran || !settingStore.showRoma,
+              forcedValue: false,
+            },
           },
           {
             key: "lyricsBlur",
@@ -303,6 +337,20 @@ export const useLyricSettings = (): SettingConfig => {
             value: computed({
               get: () => settingStore.lyricsBlur,
               set: (v) => (settingStore.lyricsBlur = v),
+            }),
+          },
+          {
+            key: "lyricsBlendMode",
+            label: "歌词混合模式",
+            type: "select",
+            description: "全屏歌词区域的颜色混合模式",
+            options: [
+              { label: "Screen", value: "screen" },
+              { label: "Plus Lighter", value: "plus-lighter" },
+            ],
+            value: computed({
+              get: () => settingStore.lyricsBlendMode,
+              set: (v) => (settingStore.lyricsBlendMode = v),
             }),
           },
           {
@@ -325,6 +373,26 @@ export const useLyricSettings = (): SettingConfig => {
       {
         title: "歌词内容",
         items: [
+          {
+            key: "lyricPriority",
+            label: "歌词源优先级",
+            type: "select",
+            description: "设置歌词获取的优先顺序",
+            options: computed(() => {
+              const options = [{ label: "自动", value: "auto" }];
+              if (settingStore.enableQQMusicLyric) {
+                options.push({ label: "QM 优先", value: "qm" });
+              }
+              if (settingStore.enableOnlineTTMLLyric) {
+                options.push({ label: "TTML 优先", value: "ttml" });
+              }
+              return options;
+            }),
+            value: computed({
+              get: () => settingStore.lyricPriority,
+              set: (v) => lyricManager.switchLyricSource(v),
+            }),
+          },
           {
             key: "preferTraditionalChinese",
             label: "更喜欢繁体中文",
@@ -375,45 +443,58 @@ export const useLyricSettings = (): SettingConfig => {
             ],
           },
           {
-            key: "enableExcludeLyrics",
-            label: "启用歌词排除",
+            key: "configExcludeLyric",
+            label: "歌词排除配置",
+            type: "button",
+            description: "可配置排除歌词，包含关键词或匹配正则表达式的歌词行将不会显示",
+            buttonLabel: "配置",
+            action: openExcludeLyric,
+          },
+          {
+            key: "replaceLyricBrackets",
+            label: "替换歌词括号内容",
             type: "switch",
-            description: "开启后可配置排除歌词，包含关键词或匹配正则表达式的歌词行将不会显示",
+            description: "将歌词中的括号内容替换为指定格式",
             value: computed({
-              get: () => settingStore.enableExcludeLyrics,
-              set: (v) => (settingStore.enableExcludeLyrics = v),
+              get: () => settingStore.replaceLyricBrackets,
+              set: (v) => (settingStore.replaceLyricBrackets = v),
             }),
             children: [
               {
-                key: "enableExcludeTTML",
-                label: "TTML 歌词排除",
-                type: "switch",
-                description:
-                  "是否要对 TTML 歌词进行歌词排除\nAMLL TTML DB 对此有硬性规定，不得包含作词、作曲等歌词无关内容，因此大多情况下无需开启",
+                key: "bracketReplacementPreset",
+                label: "括号替换样式",
+                type: "select",
+                description: "选择替换后的括号样式",
+                options: [
+                  { label: "连字符 ( - )", value: "dash" },
+                  { label: "六角括号 (〔 〕)", value: "angleBrackets" },
+                  { label: "直角引号 (「 」)", value: "cornerBrackets" },
+                  { label: "自定义", value: "custom" },
+                ],
                 value: computed({
-                  get: () => settingStore.enableExcludeTTML,
-                  set: (v) => (settingStore.enableExcludeTTML = v),
+                  get: () => settingStore.bracketReplacementPreset,
+                  set: (v) => (settingStore.bracketReplacementPreset = v),
                 }),
-              },
-              {
-                key: "enableExcludeLocalLyrics",
-                label: "本地歌词排除",
-                type: "switch",
-                description:
-                  "是否要对来自本地的歌词进行歌词排除，这包含本地覆盖的在线歌词和本地歌曲中的歌词",
-                show: isElectron,
-                value: computed({
-                  get: () => settingStore.enableExcludeLocalLyrics,
-                  set: (v) => (settingStore.enableExcludeLocalLyrics = v),
-                }),
-              },
-              {
-                key: "lyricExcludeConfig",
-                label: "歌词排除内容",
-                type: "button",
-                description: "包含关键词或匹配正则表达式的歌词行将不会显示",
-                buttonLabel: "配置",
-                action: openLyricExclude,
+                condition: () => settingStore.bracketReplacementPreset === "custom",
+                children: [
+                  {
+                    key: "customBracketReplacement",
+                    label: "自定义替换内容",
+                    type: "text-input",
+                    description:
+                      "输入自定义的替换字符。支持单个分隔符（如 - ）或成对符号（如 () ）",
+                    value: computed({
+                      get: () => settingStore.customBracketReplacement,
+                      set: (v) => {
+                        if (v.trim().length > 5) {
+                          window.$message.warning("自定义替换内容不能超过 5 个字符");
+                          return;
+                        }
+                        settingStore.customBracketReplacement = v;
+                      },
+                    }),
+                  },
+                ],
               },
             ],
           },
@@ -457,8 +538,13 @@ export const useLyricSettings = (): SettingConfig => {
                 key: "wordFadeWidth",
                 label: "文字动画的渐变宽度",
                 type: "input-number",
-                description:
-                  "单位以歌词行的主文字字体大小的倍数为单位 <br /> 默认为 0.5，即一个全角字符的一半宽度 <br /> 若模拟 Apple Music for Android 的效果，可以设为 1 <br /> 若模拟 Apple Music for iPad 的效果，可以设为 0.5 <br /> 若需近乎禁用渐变，可设为非常接近 0 的小数，如 0.01",
+                description: descMultiline`
+                  单位以歌词行的主文字字体大小的倍数为单位
+                  默认为 0.5，即一个全角字符的一半宽度
+                  若模拟 Apple Music for Android 的效果，可以设为 1
+                  若模拟 Apple Music for iPad 的效果，可以设为 0.5
+                  若需近乎禁用渐变，可设为非常接近 0 的小数，如 0.01
+                `,
                 min: 0.01,
                 max: 1,
                 step: 0.01,
@@ -562,14 +648,14 @@ export const useLyricSettings = (): SettingConfig => {
             action: openFontManager,
           },
           {
-            key: "desktopLyricShowYrc",
+            key: "desktopLyricShowWordLyrics",
             label: "显示逐字歌词",
             type: "switch",
             description: "是否显示桌面歌词逐字效果",
             value: computed({
-              get: () => desktopLyricConfig.showYrc,
+              get: () => desktopLyricConfig.showWordLyrics,
               set: (v) => {
-                desktopLyricConfig.showYrc = v;
+                desktopLyricConfig.showWordLyrics = v;
                 saveDesktopLyricConfig();
               },
             }),
@@ -583,6 +669,19 @@ export const useLyricSettings = (): SettingConfig => {
               get: () => desktopLyricConfig.showTran,
               set: (v) => {
                 desktopLyricConfig.showTran = v;
+                saveDesktopLyricConfig();
+              },
+            }),
+          },
+          {
+            key: "desktopLyricAnimation",
+            label: "歌词切换动画",
+            type: "switch",
+            description: "开启后歌词切换时会有动画过渡效果",
+            value: computed({
+              get: () => desktopLyricConfig.animation,
+              set: (v) => {
+                desktopLyricConfig.animation = v;
                 saveDesktopLyricConfig();
               },
             }),
@@ -703,6 +802,249 @@ export const useLyricSettings = (): SettingConfig => {
             description: "恢复默认桌面歌词配置",
             buttonLabel: "恢复默认",
             action: restoreDesktopLyricConfig,
+          },
+        ],
+      },
+      {
+        title: isWin ? "任务栏歌词" : "悬浮歌词",
+        show: isElectron,
+        items: [
+          {
+            key: "showTaskbarLyric",
+            label: "开启任务栏歌词",
+            type: "switch",
+            description: "开启后将在任务栏显示歌词",
+            value: computed({
+              get: () => statusStore.showTaskbarLyric,
+              set: (v) => {
+                player.setTaskbarLyricShow(v);
+              },
+            }),
+          },
+          {
+            key: "taskbarLyricMode",
+            label: "显示模式",
+            type: "select",
+            description: "依附任务栏或独立悬浮显示",
+            options: [
+              { label: "依附任务栏", value: "taskbar" },
+              { label: "独立窗口", value: "floating" },
+            ],
+            value: toRef(settingStore, "taskbarLyricMode"),
+          },
+          {
+            key: "taskbarLyricFloatingAlign",
+            label: "悬浮对齐",
+            type: "select",
+            description: "控制封面位置与文字对齐方向",
+            show: () => settingStore.taskbarLyricMode === "floating",
+            options: [
+              { label: "左对齐", value: "left" },
+              { label: "右对齐", value: "right" },
+            ],
+            value: toRef(settingStore, "taskbarLyricFloatingAlign"),
+          },
+          {
+            key: "taskbarLyricFloatingAlwaysOnTop",
+            label: "悬浮置顶",
+            type: "switch",
+            description: "是否让悬浮窗口始终显示在最前",
+            show: () => settingStore.taskbarLyricMode === "floating",
+            value: toRef(settingStore, "taskbarLyricFloatingAlwaysOnTop"),
+          },
+          {
+            key: "taskbarLyricFloatingAutoWidth",
+            label: "悬浮自动宽度",
+            type: "switch",
+            description: "开启后窗口宽度将随歌词内容变化",
+            show: () => settingStore.taskbarLyricMode === "floating",
+            value: toRef(settingStore, "taskbarLyricFloatingAutoWidth"),
+          },
+          {
+            key: "taskbarLyricFloatingWidth",
+            label: "悬浮宽度",
+            type: "input-number",
+            description: "关闭自动宽度后可手动设置",
+            show: () =>
+              settingStore.taskbarLyricMode === "floating" &&
+              settingStore.taskbarLyricFloatingAutoWidth === false,
+            min: 100,
+            max: 5000,
+            step: 10,
+            suffix: "px",
+            value: computed({
+              get: () => settingStore.taskbarLyricFloatingWidth,
+              set: (v) => (settingStore.taskbarLyricFloatingWidth = v ?? 300),
+            }),
+            defaultValue: 300,
+          },
+          {
+            key: "taskbarLyricFloatingHeight",
+            label: "窗口高度",
+            type: "input-number",
+            description: "调整窗口高度",
+            show: () => settingStore.taskbarLyricMode === "floating",
+            min: 48,
+            max: 100,
+            step: 1,
+            suffix: "px",
+            value: computed({
+              get: () => settingStore.taskbarLyricFloatingHeight,
+              set: (v) => (settingStore.taskbarLyricFloatingHeight = v ?? 48),
+            }),
+            defaultValue: 48,
+          },
+          {
+            key: "taskbarLyricShowWhenPaused",
+            label: "暂停时显示",
+            type: "switch",
+            description: "是否在暂停播放时显示任务栏歌词",
+            value: toRef(settingStore, "taskbarLyricShowWhenPaused"),
+          },
+          {
+            key: "taskbarLyricUseThemeColor",
+            label: "跟随封面颜色",
+            type: "switch",
+            description: "开启后任务栏歌词颜色将跟随歌曲封面，下一曲生效",
+            value: toRef(settingStore, "taskbarLyricUseThemeColor"),
+          },
+          {
+            key: "taskbarLyricShowCover",
+            label: "显示封面",
+            type: "switch",
+            description: "是否在任务栏歌词中显示歌曲封面",
+            value: toRef(settingStore, "taskbarLyricShowCover"),
+          },
+          {
+            key: "taskbarLyricMaxWidth",
+            label: "最大宽度",
+            type: "slider",
+            description: "任务栏歌词的最大宽度占屏幕比例",
+            min: 10,
+            max: 100,
+            step: 1,
+            value: toRef(settingStore, "taskbarLyricMaxWidth"),
+            suffix: "%",
+          },
+          {
+            key: "taskbarLyricMinWidth",
+            label: "最小宽度",
+            type: "slider",
+            description: "任务栏歌词可用空间低于此比例时自动隐藏",
+            show: () => settingStore.taskbarLyricMode === "taskbar",
+            min: 0,
+            max: 50,
+            step: 1,
+            value: toRef(settingStore, "taskbarLyricMinWidth"),
+            suffix: "%",
+          },
+          {
+            key: "taskbarLyricMargin",
+            label: "歌词边距",
+            type: "input-number",
+            description: "任务栏歌词与相邻元素之间的间距",
+            min: 0,
+            max: 500,
+            step: 10,
+            suffix: "px",
+            value: computed({
+              get: () => settingStore.taskbarLyricMargin,
+              set: (v) => (settingStore.taskbarLyricMargin = v ?? 10),
+            }),
+            defaultValue: 10,
+          },
+          {
+            key: "taskbarLyricAutoShrink",
+            label: "自动收缩",
+            type: "switch",
+            description: "关闭后将固定占据设置的最大宽度",
+            show: () => settingStore.taskbarLyricMode === "taskbar",
+            value: computed({
+              get: () => settingStore.taskbarLyricAutoShrink,
+              set: (v) => {
+                if (v) {
+                  window.$dialog.warning({
+                    title: "提示",
+                    content: "可能会导致右侧对齐的任务栏歌词异常抖动，是否开启？",
+                    positiveText: "开启",
+                    negativeText: "取消",
+                    onPositiveClick: () => {
+                      settingStore.taskbarLyricAutoShrink = true;
+                    },
+                  });
+                } else {
+                  settingStore.taskbarLyricAutoShrink = false;
+                }
+              },
+            }),
+          },
+          {
+            key: "taskbarLyricPosition",
+            label: "显示位置",
+            type: "select",
+            description: "任务栏歌词的显示位置",
+            show: () => settingStore.taskbarLyricMode === "taskbar",
+            options: [
+              { label: "自动", value: "automatic" },
+              { label: "左侧", value: "left" },
+              { label: "右侧", value: "right" },
+            ],
+            value: toRef(settingStore, "taskbarLyricPosition"),
+          },
+          {
+            key: "taskbarLyricAnimationMode",
+            label: "动画效果",
+            type: "select",
+            description: "任务栏歌词切换时的动画效果",
+            options: [
+              { label: "滑动模糊", value: "slide-blur" },
+              { label: "左侧滑入", value: "left-sm" },
+            ],
+            value: toRef(settingStore, "taskbarLyricAnimationMode"),
+          },
+          {
+            key: "taskbarLyricSingleLineMode",
+            label: "单行模式",
+            type: "switch",
+            description: "是否仅显示单行歌词（不显示下一句）",
+            value: toRef(settingStore, "taskbarLyricSingleLineMode"),
+          },
+          {
+            key: "taskbarLyricShowWordLyrics",
+            label: "显示逐字歌词",
+            type: "switch",
+            description: "是否显示任务栏歌词逐字效果",
+            value: toRef(settingStore, "taskbarLyricShowWordLyrics"),
+          },
+          {
+            key: "taskbarLyricFontWeight",
+            label: "文字字重",
+            type: "input-number",
+            description: "设置任务栏歌词显示的字重",
+            min: 100,
+            max: 900,
+            step: 100,
+            value: toRef(settingStore, "taskbarLyricFontWeight"),
+          },
+        ],
+      },
+      {
+        title: "macOS 状态栏歌词",
+        show: isElectron && isMac,
+        items: [
+          {
+            key: "macStatusBarLyricEnabled",
+            label: "启用状态栏歌词",
+            type: "switch",
+            description: "开启后将在 macOS 状态栏显示歌词",
+            value: computed({
+              get: () => settingStore.macos.statusBarLyric.enabled,
+              set: (v) => {
+                settingStore.macos.statusBarLyric.enabled = v;
+                window.electron.ipcRenderer.send("macos-lyric:toggle", v);
+                window.$message.success(`${v ? "已开启" : "已关闭"}状态栏歌词`);
+              },
+            }),
           },
         ],
       },
